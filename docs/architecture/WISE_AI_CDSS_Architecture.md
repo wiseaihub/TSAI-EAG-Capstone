@@ -1,5 +1,9 @@
 # WISE AI — Agentic Clinical Decision & Continued‑Care System (CDSS)
 
+> **Purpose**: This document is the single source of truth for  
+> architecture, scope boundaries, and demo behavior for the TSAI Capstone.
+
+
 ## 0. One‑Line Vision
 WISE AI is an agentic Clinical Decision & Continued‑Care System that augments
 patients and doctors by synthesizing patient context, research signals, and
@@ -71,6 +75,7 @@ Used by:
 - Safety & Explainability Agent
 - Confidence Scoring Agent
 - Action Simulator (future‑flagged)
+- All agents operate under a central Orchestrator with deterministic execution for demo
 
 Agents collaborate but **do not act autonomously** in MVP.
 
@@ -117,7 +122,68 @@ Clearly labeled: **“Future Capability”**
 
 ---
 
-## 8. Status
+## 8. Architecture Diagram (Rendered)
+![WISE AI CDSS Architecture](wise-ai-cdss-architecture.svg)
+
+---
+
+## 9. Architecture Diagram (Mermaid – Source)
+
+```mermaid
+graph TD
+
+  %% Actors
+  Patient["Patient User"]
+  Doctor["Doctor User"]
+
+  %% EHR
+  EHR["EHR UI<br/>(WISE Doctor)"]
+
+  %% WISE AI Components
+  Plugin["WISE AI Plugin<br/>(Consent-based Capture & Research)"]
+  CDSS["WISE AI CDSS Web App<br/>(Agentic Reasoning UI)"]
+  KB["Shared Knowledge Bank"]
+
+  %% Agents
+  SymptomAgent["Symptom Agent"]
+  CBCAgent["CBC / Lab Agent"]
+  TrendAgent["Trend / History Agent"]
+  ResearchAgent["Research Agent"]
+  ActionAgent["Action / Recommendation Agent"]
+
+  %% User Interaction
+  Patient -->|Uses EHR| EHR
+  Doctor -->|Uses EHR| EHR
+
+  %% Invocation
+  EHR -->|Click WISE AI| Plugin
+
+  %% Data Capture
+  Plugin -->|Consent-based Extraction| KB
+  Plugin -->|Triggers Analysis| CDSS
+
+  %% Agentic Reasoning
+  CDSS --> SymptomAgent
+  CDSS --> CBCAgent
+  CDSS --> TrendAgent
+  CDSS --> ResearchAgent
+
+  SymptomAgent --> ActionAgent
+  CBCAgent --> ActionAgent
+  TrendAgent --> ActionAgent
+  ResearchAgent --> ActionAgent
+
+  %% Outputs
+  ActionAgent -->|Recommendations and Guidance| CDSS
+
+  %% Feedback Loop
+  CDSS -->|Confidence Signals| CDSS
+  CDSS -->|Optional Feedback| KB
+  
+```
+---
+
+## 10. Status
 This document represents the **frozen architecture baseline** for:
 - MVP feature freeze
 - Capstone demo
