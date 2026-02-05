@@ -1,18 +1,7 @@
-# WISE AI – Agentic CDSS Architecture
+> ⚠ Deprecated – see WISE_AI_CDSS_Architecture.md
 
-
-## High‑Level EHR ↔ WISE AI Architecture
-
-The following diagram represents the end‑to‑end functional flow of the
-WISE AI Agentic Clinical Decision & Continued‑Care System.
-
-- User‑initiated (no silent background processing)
-- Consent‑based data capture
-- Clear separation between EHR, Plugin, CDSS, and Agents
-- Explicit marking of future feedback loops
-
-![WISE AI CDSS Architecture](wise-ai-cdss-architecture.svg)
-
+## Architecture Diagram (Rendered)
+![WISE AI CDSS Architecture](wise_ai_cdss_architecture.svg)
 
 ```mermaid
 graph TD
