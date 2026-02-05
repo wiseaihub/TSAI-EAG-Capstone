@@ -4,6 +4,9 @@
 ![Capstone](https://img.shields.io/badge/TSAI-Capstone-blue)
 ![Status](https://img.shields.io/badge/Status-Active%20Development-orange)
 ![Domain](https://img.shields.io/badge/Domain-Healthcare-informational)
+[![Capstone CI](https://github.com/wiseaihub/TSAI-EAG-Capstone/actions/workflows/capstone.yml/badge.svg)](
+https://github.com/wiseaihub/TSAI-EAG-Capstone/actions/workflows/capstone.yml
+)
 
 ---
 
