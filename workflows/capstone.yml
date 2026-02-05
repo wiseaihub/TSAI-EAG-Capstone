@@ -1,0 +1,74 @@
+
+---
+
+## 🚦 MVP Scope (Capstone)
+
+**Included**
+- Standalone CDSS web app
+- User‑invoked plugin
+- Multi‑agent reasoning
+- Confidence & missing‑data feedback loop
+- Clear patient + doctor flows
+- Explainability over automation
+
+**Explicitly Out of Scope (Simulated / Future)**
+- Automatic EHR write‑back
+- Live lab bookings
+- Medication ordering
+- Silent monitoring
+
+(These are shown as *future / disabled* features where relevant.)
+
+---
+
+## 🗓 Project Constraints
+
+- ⏱ 30‑day hard deadline
+- 🎓 Academic capstone (design clarity > production scale)
+- 🧪 PoC first, extensible architecture second
+- 🧑‍⚕️ Clinical responsibility & explainability are non‑negotiable
+
+---
+
+## 👥 Team
+
+- **Sreedhar Byreeka**  
+  PM & Healthcare IT SME  
+
+- **Ritesh Verma**  
+  Agentic AI & Technical Lead  
+
+Mentor: **Rohan Shravan (TSAI)**
+
+---
+
+## 📌 Status
+
+🔄 Active development  
+📌 MVP feature set frozen  
+📐 Architecture finalised  
+🧪 Demo & evaluation in progress
+
+---
+
+
+## References
+
+- TSAI – The School of AI: https://theschoolof.ai/
+- Course: Extensive AI for Generative Systems
+- Capstone Guidelines: See `/docs` and uploaded PDFs
+
+Used for:
+- Linting / validation (future)
+- Documentation checks
+- Demo‑readiness signals
+
+
+---
+
+## Disclaimer
+
+WISE AI is a **clinical decision‑support system**.
+
+It does **not** diagnose, prescribe, or replace licensed medical professionals.  
+All outputs are advisory and require human clinical judgment.
