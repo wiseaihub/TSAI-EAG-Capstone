@@ -17,7 +17,7 @@ WISE AI is an **Agentic Clinical Decision Support System (CDSS)** designed as pa
 
 It supports **continued care** across patients and doctors through
 consent‑based data capture, multi‑agent reasoning, and explainable outputs.
-It is designed to work *alongside* an existing EHR (WISE Doctor), assisting both **patients and doctors** across the end‑to‑end healthcare journey — from triage and diagnostics to treatment guidance and continued care.
+It is designed to work strictly based on user-consent only, assisting both **patients and doctors** across the end‑to‑end healthcare journey — from triage and diagnostics to treatment guidance and continued care.
 
 > ⚠️ This system provides **decision support, not medical automation**.  
 > All clinical decisions remain with licensed practitioners.
@@ -52,7 +52,7 @@ Primary demo audience: **Rohan Shravan (TSAI)**
 
 ### ✅ What It Is
 - A **user‑invoked**, consent‑based CDSS
-- An **overlay** on top of an EHR (not a replacement)
+- An **assistive agent** for optimal and efficient care delivery
 - Agentic reasoning with confidence & feedback loops
 - Designed for both **patients and doctors**
 
