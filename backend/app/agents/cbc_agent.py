@@ -25,6 +25,10 @@ class CBCAgent(BaseAgent):
             flags.append("Thrombocytopenia")
             risk_score += 1
 
+        if getattr(data, "rbc", None) is not None and data.rbc < 4.0:
+            flags.append("Low RBC")
+            risk_score += 1
+
         if risk_score >= 3:
             risk_level = "High"
         elif risk_score >= 1:

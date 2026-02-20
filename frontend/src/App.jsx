@@ -73,6 +73,7 @@ function App() {
       body: JSON.stringify({
         hemoglobin: 7.5,
         wbc: 15000,
+        rbc: 4.2,
         platelets: 120000,
       }),
     });
