@@ -1,0 +1,24 @@
+The following table summarizes the recommendations from the **Strategy for Artificial Intelligence in Healthcare for India (SAHI)**, organized by Pillar and Thematic Area.
+
+### **SAHI: Recommendations for AI in Healthcare**
+
+| Pillar | Thematic Area | Recommendation |
+| :--- | :--- | :--- |
+| **1. Governance, Regulation, and Trust** | **Risk, Safety, and Accountability** | 1. AI Solutions in healthcare must be classified based on harm likelihood and subject to risk-proportionate regulatory obligations.<br>2. Establish measures for actor accountability to ensure liability for harms is appropriately allocated.<br>3. Embed safety across the AI lifecycle with clear metrics for safety, bias, interoperability, and real-world use. |
+| | **Equity and Inclusivity** | 4. Ensure training/validation data is representative of the population and settings of intended use to ensure fairness.<br>5. High-impact AI should assess and address potential inequity impacts during design, evaluation, and deployment. |
+| | **Transparency, Monitoring, and Oversight** | 6. Communicate AI use, limitations, and risks explicitly in a form understandable to intended users.<br>7. Monitor post-deployment performance, model drift, bias, and unintended consequences. |
+| | **Cross Sector Governance** | 8. Enable formal cross-sector and centre–state coordination mechanisms (health, tech, legal) to reduce duplication and promote coherent governance. |
+| **2. Health Data and Digital Infrastructure** | **Data Coverage and Participation** | 9. Enable public/private participation via minimum dataset specifications, interoperability obligations, and incentives.<br>10. Ensure datasets represent population-scale realities across diverse care settings (not just high-resource facilities). |
+| | **Data Quality and AI Readiness** | 11. Define and implement a Health Data Quality Framework with standards for completeness, consistency, and fitness-for-use. |
+| | **Data Lifecycle Governance** | 12. Develop privacy-preserving standards (de-identification/anonymization) for secondary use of non-personal data.<br>13. Define cybersecurity standards, incident response protocols, and continuity planning. |
+| | **Interoperability and Standards** | 14. Align interoperability standards with ABDM (Ayushman Bharat Digital Mission) in both public and private sectors.<br>15. Define data sharing categories under a clear legal basis for health system objectives. |
+| **3. Workforce, Institutional Capacity, and Change Management** | **Workforce Capacity and AI Literacy** | 16. Promote a role-based AI competency framework across clinical, administrative, frontline, and leadership roles.<br>17. Integrate AI and digital health competencies into formal education (medical, technical, public admin).<br>18. Strengthen AI capacity among regulators and auditors for effective lifecycle monitoring and enforcement. |
+| | **Institutional Capacity** | 19. Create designated AI units/nodal cells in health departments to lead strategy, tool assessment, and deployment oversight.<br>20. Establish structured collaboration/knowledge-exchange mechanisms for ethical, context-appropriate AI adoption. |
+| | **Change Management** | 21. Embed AI tools within existing workflows to support decisions without increasing fragmentation or burden.<br>22. Clearly define human vs. AI roles and responsibilities, including oversight and escalation mechanisms. |
+| **4. Research, Innovation, and Evidence Generation** | **Responsible Research** | 23. Strengthen Institutional Ethics Committees to become AI-ready for ethical review of research and deployment.<br>24. Align research incentives and funding with national and state health priorities. |
+| | **Open Innovation** | 25. Encourage open and collaborative innovation models to advance AI research in emerging healthcare needs. |
+| | **Evidence and Validation** | 26. Develop standardized, risk-proportionate evaluation frameworks covering safety, fairness, usability, relevance, and accuracy. |
+| | **Translation to Impact** | 27. Support stage-appropriate funding for AI from research to testing and pilots within public health systems.<br>28. Enable trial designs suited to evolving AI, integrating post-market monitoring and feedback loops. |
+| **5. Ecosystem Enablement and Global Leadership** | **Market Stewardship** | 29. Redefine public procurement frameworks to prioritize innovation, outcomes, safety, and interoperability. |
+| | **Industry Enablement** | 30. Define clear pilot-to-scale pathways using testbeds and sandboxes for safe experimentation.<br>31. Promote cluster-based AI-for-health ecosystems (medical colleges, hospitals) to reduce barriers for startups/MSMEs. |
+| | **Learning and Cooperation** | 32. Establish institutionalized platforms for knowledge exchange to strengthen India’s role in global AI cooperation and norm-setting. |
