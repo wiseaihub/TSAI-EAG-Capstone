@@ -1,17 +1,5 @@
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-// 🔹 Replace with your values
-const supabaseUrl = "https://lfjihuzcshjpggtdrtne.supabase.co";
-const supabaseAnonKey = "sb_publishable_VdhxbJsy2M4EZrHF77DQ8g_65HTEosc";
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-const debugSession = async () => {
-  const { data } = await supabase.auth.getSession();
-  console.log("SESSION:", data);
-};
-
-<button onClick={debugSession}>Debug Session</button>
+import { supabase } from "./lib/supabase";
 
 
 function App() {
@@ -19,6 +7,7 @@ function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [result, setResult] = useState(null);
+  const [sessionDebug, setSessionDebug] = useState(null);
 
   // 🔥 Check session on load
   useEffect(() => {
@@ -52,6 +41,15 @@ function App() {
   // 🚪 Logout
   const logout = async () => {
     await supabase.auth.signOut();
+  };
+
+  const debugSession = async () => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      setSessionDebug({ error: error.message });
+      return;
+    }
+    setSessionDebug(data);
   };
 
   // 🧪 Call Backend Analyze
@@ -107,6 +105,15 @@ function App() {
         <>
           <p>Logged in as: {session.user.email}</p>
           <button onClick={logout}>Logout</button>
+          <button onClick={debugSession} style={{ marginLeft: "12px" }}>
+            Debug Session
+          </button>
+
+          {sessionDebug && (
+            <pre style={{ marginTop: "12px" }}>
+              {JSON.stringify(sessionDebug, null, 2)}
+            </pre>
+          )}
 
           <hr />
 
