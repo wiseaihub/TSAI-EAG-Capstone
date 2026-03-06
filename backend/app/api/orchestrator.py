@@ -4,6 +4,7 @@ from app.schemas.cbc import CBCInput
 from app.db.session import get_db
 from app.services.agent_service import run_cbc
 from app.agents.fusion_engine import fuse_results
+from app.agents.wise_adapter import run_wise_agent
 from app.core.security import get_current_user
 
 router = APIRouter()
@@ -15,9 +16,10 @@ def analyze(
     db: Session = Depends(get_db),
 ):
     patient_id = user["sub"]
+    wise_result = run_wise_agent(payload, patient_id, db)
 
     results = {}
     results["cbc"] = run_cbc(payload, db, patient_id)
 
-    return results
+    return {"cbc": results["cbc"], "wise": wise_result}
 

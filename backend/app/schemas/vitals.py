@@ -17,3 +17,14 @@ class VitalsOutput(BaseModel):
     risk_level: str
     flags: list[str]
     confidence: float
+
+
+class VitalsReading(BaseModel):
+    """Single vitals reading for fetch/display."""
+
+    timestamp: str = Field(..., description="ISO datetime of reading")
+    systolic_bp: int = Field(..., ge=0, description="Systolic BP (mmHg)")
+    diastolic_bp: int = Field(..., ge=0, description="Diastolic BP (mmHg)")
+    temp_c: float = Field(..., description="Temperature (°C)")
+    pulse: int = Field(..., ge=0, description="Heart rate (bpm)")
+    spo2: float = Field(..., ge=0, le=100, description="SpO2 (%)")
