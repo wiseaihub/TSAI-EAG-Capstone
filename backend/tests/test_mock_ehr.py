@@ -38,6 +38,14 @@ def test_fetch_vitals():
     assert v["spo2"] == 98.0
     assert "timestamp" in v
 
+    # Extended vitals fields from UI should be present (even if null in mock)
+    assert "height_cm" in v
+    assert "weight_kg" in v
+    assert "head_circumference_cm" in v
+    assert "respiratory_rate" in v
+    assert "blood_sugar_before_meal_mgdl" in v
+    assert "blood_sugar_after_meal_mgdl" in v
+
 
 def test_fetch_labs():
     """GET /patients/{patient_id}/labs returns sample lab results."""
