@@ -13,6 +13,11 @@ services:
       - "8000:8000"
     env_file:
       - ../../.env
+    environment:
+      - S18_BASE_URL=${S18_BASE_URL:-http://s18share-api:8000}
+      - S18_POLL_TIMEOUT_SEC=${S18_POLL_TIMEOUT_SEC:-900}
+      - S18_POLL_INTERVAL_SEC=${S18_POLL_INTERVAL_SEC:-2.0}
+      - WISE_TIMEOUT_SEC=${WISE_TIMEOUT_SEC:-920}
 
   frontend:
     image: ghcr.io/${GITHUB_OWNER:-wiseaihub}/tsai-eag-capstone-frontend:${IMAGE_TAG:-latest}

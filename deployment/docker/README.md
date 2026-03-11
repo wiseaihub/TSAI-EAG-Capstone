@@ -27,3 +27,12 @@ GITHUB_OWNER=your-github-org docker compose -f docker-compose.ghcr.yml up -d
 ```
 
 Images used: `ghcr.io/<GITHUB_OWNER>/tsiag-capstone-backend:latest`, `ghcr.io/<GITHUB_OWNER>/tsiag-capstone-frontend:latest` (built by `.github/workflows/docker-publish.yml`).
+
+## S18 integration (optional env overrides)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `S18_BASE_URL` | `http://s18share-api:8000` | S18 API base URL |
+| `S18_POLL_TIMEOUT_SEC` | `900` | Max seconds to poll S18 run before soft fallback |
+| `S18_POLL_INTERVAL_SEC` | `2.0` | Seconds between poll requests |
+| `WISE_TIMEOUT_SEC` | `920` | Max seconds for /analyze to wait for WISE (must exceed S18 poll timeout) |

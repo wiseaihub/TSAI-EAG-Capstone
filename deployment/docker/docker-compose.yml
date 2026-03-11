@@ -8,6 +8,10 @@ services:
     env_file:
       - ../../.env
     environment:
+      - S18_BASE_URL=http://s18share-api:8000
+      - S18_POLL_TIMEOUT_SEC=${S18_POLL_TIMEOUT_SEC:-900}
+      - S18_POLL_INTERVAL_SEC=${S18_POLL_INTERVAL_SEC:-2.0}
+      - WISE_TIMEOUT_SEC=${WISE_TIMEOUT_SEC:-920}
       - DEBUG_LOG_PATH=/workspace/debug-f905fa.log
     volumes:
       - ../../:/workspace
@@ -17,8 +21,8 @@ services:
       context: ../../frontend
       dockerfile: Dockerfile
       args:
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL in deployment/docker/.env}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY in deployment/docker/.env}
     ports:
       - "3000:80"
     depends_on:
