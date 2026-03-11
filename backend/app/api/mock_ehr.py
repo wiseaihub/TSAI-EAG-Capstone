@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
+from app.agents.wise_adapter import run_wise_agent
 from app.schemas.patient import PatientRead
 from app.schemas.vitals import VitalsReading
 from app.schemas.lab import LabResultRead
@@ -69,4 +70,10 @@ def fetch_vitals(patient_id: str) -> list[VitalsReading]:
 @router.get("/patients/{patient_id}/labs", response_model=list[LabResultRead])
 def fetch_labs(patient_id: str) -> list[LabResultRead]:
     """Fetch mock lab results for a patient. Returns sample lab results."""
+    # Best effort side-effect: trigger WISE adapter for mock EHR lab fetches.
+    # This keeps the mock response stable even if the adapter runtime is down.
+    try:
+        run_wise_agent({"event": "mock_ehr_labs_fetch"}, patient_id, db=None)
+    except Exception:
+        pass
     return _sample_labs(patient_id)
