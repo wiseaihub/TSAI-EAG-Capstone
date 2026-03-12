@@ -28,6 +28,30 @@ GITHUB_OWNER=your-github-org docker compose -f docker-compose.ghcr.yml up -d
 
 Images used: `ghcr.io/<GITHUB_OWNER>/tsiag-capstone-backend:latest`, `ghcr.io/<GITHUB_OWNER>/tsiag-capstone-frontend:latest` (built by `.github/workflows/docker-publish.yml`).
 
+## Full stack (wise-ai + S18Share)
+
+To run wise-ai with S18 (EHR Data Miner integration) in one command:
+
+```bash
+cd deployment/docker
+docker compose -f docker-compose.full.yml up -d
+```
+
+**Prerequisite:** S18Share must be a sibling of wise-ai (e.g. `Downloads/wise-ai` and `Downloads/S18Share`). If your layout differs, set `S18_PATH`:
+
+```bash
+S18_PATH=/path/to/S18Share/S18Share docker compose -f docker-compose.full.yml up -d
+```
+
+This starts:
+- **wise-ai backend** (port 8000) and **frontend** (port 3000)
+- **S18 s18share-api** (port 8001) with EHRDataMinerAgent and mockehr MCP
+- **ollama** for S18 (port 11434)
+
+S18's mockehr uses `WISE_MOCKEHR_BASE_URL=http://backend:8000` to fetch patient data and labs from wise-ai's Mock EHR API.
+
+---
+
 ## S18 integration (optional env overrides)
 
 | Variable | Default | Purpose |
@@ -36,3 +60,4 @@ Images used: `ghcr.io/<GITHUB_OWNER>/tsiag-capstone-backend:latest`, `ghcr.io/<G
 | `S18_POLL_TIMEOUT_SEC` | `900` | Max seconds to poll S18 run before soft fallback |
 | `S18_POLL_INTERVAL_SEC` | `2.0` | Seconds between poll requests |
 | `WISE_TIMEOUT_SEC` | `920` | Max seconds for /analyze to wait for WISE (must exceed S18 poll timeout) |
+| `WISE_MOCKEHR_BASE_URL` | (S18 env) | Points to wise-ai backend base URL when running integrated stack |

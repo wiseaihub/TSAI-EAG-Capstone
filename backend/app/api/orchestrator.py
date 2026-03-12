@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.schemas.cbc import CBCInput
+from app.api.mock_ehr import store_patient_cbc
 from app.db.session import get_db, SessionLocal
 from app.db.models import AgentSession
 from app.services.agent_service import run_cbc
@@ -64,6 +65,9 @@ def analyze(
     try:
         # Run CBC first (fast, local)
         cbc_result = run_cbc(payload, db, patient_id)
+
+        # Store CBC for EHRDataMinerAgent / mockehr to fetch as labs
+        store_patient_cbc(patient_id, payload.model_dump())
 
         if fast:
             return {"cbc": cbc_result, "wise": None}

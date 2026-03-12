@@ -76,7 +76,7 @@ function App() {
     const controller = new AbortController();
     let timeoutId;
     try {
-      timeoutId = setTimeout(() => controller.abort(), fastMode ? 10000 : 35000);
+      timeoutId = setTimeout(() => controller.abort(), fastMode ? 10000 : 180000);
       const response = await fetch(`${apiBase}/analyze?fast=${fastMode}`, {
         method: "POST",
         signal: controller.signal,
@@ -227,7 +227,7 @@ function App() {
           </button>
           {analyzing && (
             <p style={{ marginTop: "8px", color: "#666", fontSize: "14px" }}>
-              Waiting for S18 agent and WISE analysis. Please do not refresh.
+              {fastMode ? "Analyzing..." : "WISE analysis may take 1–3 minutes. Please do not refresh."}
             </p>
           )}
 

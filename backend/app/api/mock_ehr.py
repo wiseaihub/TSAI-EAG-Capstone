@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.agents.wise_adapter import run_wise_agent
 from app.schemas.patient import PatientRead
@@ -10,6 +10,23 @@ from app.schemas.vitals import VitalsReading
 from app.schemas.lab import LabResultRead
 
 router = APIRouter(tags=["Mock EHR"])
+
+# Per-patient CBC cache: populated by /analyze, consumed by /patients/{id}/labs (S18 EHRDataMinerAgent).
+_patient_labs_cache: dict[str, dict] = {}
+
+# CBC payload -> LabResultRead mapping (hemoglobin, wbc, rbc, platelets)
+_CBC_TO_LAB = [
+    ("hemoglobin", "Hemoglobin", "g/dL"),
+    ("wbc", "WBC", "10^3/µL"),
+    ("rbc", "RBC", "million/µL"),
+    ("platelets", "Platelets", "/µL"),
+]
+
+
+def store_patient_cbc(patient_id: str, payload: dict) -> None:
+    """Store CBC payload for a patient so /patients/{id}/labs returns it for S18 EHRDataMinerAgent."""
+    if patient_id and isinstance(payload, dict):
+        _patient_labs_cache[patient_id] = dict(payload)
 
 
 def _sample_patient(patient_id: str) -> PatientRead:
@@ -67,13 +84,42 @@ def fetch_vitals(patient_id: str) -> list[VitalsReading]:
     return _sample_vitals(patient_id)
 
 
+def _labs_from_cbc_cache(patient_id: str) -> list[LabResultRead] | None:
+    """Return labs from cached CBC payload if available."""
+    payload = _patient_labs_cache.get(patient_id)
+    if not payload:
+        return None
+    now = datetime.now(timezone.utc)
+    rows: list[LabResultRead] = []
+    for i, (key, name, unit) in enumerate(_CBC_TO_LAB):
+        value = payload.get(key)
+        if value is not None:
+            try:
+                v = float(value)
+            except (TypeError, ValueError):
+                continue
+            rows.append(
+                LabResultRead(
+                    id=f"lab-{key}-{patient_id}",
+                    name=name,
+                    value=v,
+                    unit=unit,
+                    date=now,
+                )
+            )
+    return rows if rows else None
+
+
 @router.get("/patients/{patient_id}/labs", response_model=list[LabResultRead])
-def fetch_labs(patient_id: str) -> list[LabResultRead]:
-    """Fetch mock lab results for a patient. Returns sample lab results."""
-    # Best effort side-effect: trigger WISE adapter for mock EHR lab fetches.
-    # This keeps the mock response stable even if the adapter runtime is down.
-    try:
-        run_wise_agent({"event": "mock_ehr_labs_fetch"}, patient_id, db=None)
-    except Exception:
-        pass
+def fetch_labs(patient_id: str, request: Request) -> list[LabResultRead]:
+    """Fetch mock lab results for a patient. Returns cached CBC from /analyze when available."""
+    cached = _labs_from_cbc_cache(patient_id)
+    if cached:
+        return cached
+    # Skip run_wise_agent when caller is S18 mockehr (avoids nested S18 run)
+    if request.headers.get("X-Request-Source") != "s18":
+        try:
+            run_wise_agent({"event": "mock_ehr_labs_fetch"}, patient_id, db=None)
+        except Exception:
+            pass
     return _sample_labs(patient_id)
