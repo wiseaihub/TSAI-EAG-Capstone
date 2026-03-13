@@ -57,7 +57,12 @@ S18's mockehr uses `WISE_MOCKEHR_BASE_URL=http://backend:8000` to fetch patient 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `S18_BASE_URL` | `http://s18share-api:8000` | S18 API base URL |
-| `S18_POLL_TIMEOUT_SEC` | `900` | Max seconds to poll S18 run before soft fallback |
+| `RUN_POLL_TIMEOUT_SECONDS` | `300` | Total wait timeout for polling GET /runs/{id}; exposed in GET /health so clients/gateways can set their timeout (e.g. 300 or higher so ~2 min runs are not cut off). |
+| `S18_POLL_TIMEOUT_SEC` | (fallback) | Legacy env; used if RUN_POLL_TIMEOUT_SECONDS not set. |
 | `S18_POLL_INTERVAL_SEC` | `2.0` | Seconds between poll requests |
-| `WISE_TIMEOUT_SEC` | `920` | Max seconds for /analyze to wait for WISE (must exceed S18 poll timeout) |
+| `WISE_TIMEOUT_SEC` | `920` | Max seconds for /analyze to wait for WISE (must exceed poll timeout) |
 | `WISE_MOCKEHR_BASE_URL` | (S18 env) | Points to wise-ai backend base URL when running integrated stack |
+
+Optional override via backend `settings.json`: set `"run_poll_timeout_seconds": 300` (or higher). Path via `SETTINGS_PATH` or default `backend/settings.json`. See `backend/settings.json.example`.
+
+**Testing POST /analyze with curl:** S18 runs can take 1–3 minutes. Use a client timeout at least as long as `poll_timeout_seconds` (e.g. 300s), otherwise you'll see "Request timed out" even though the backend and S18 complete. Example: `curl --max-time 400 -X POST http://localhost:8000/analyze -H "Content-Type: application/json" -H "Authorization: Bearer YOUR_JWT" -d '{"hemoglobin":13.5,"wbc":7000,"rbc":4.5,"platelets":250000}'`

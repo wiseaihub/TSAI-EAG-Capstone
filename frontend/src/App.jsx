@@ -17,6 +17,7 @@ function App() {
   const [rbc, setRbc] = useState(4.5);
   const [platelets, setPlatelets] = useState(250000);
   const [fastMode, setFastMode] = useState(true); // Skip WISE for instant CBC results
+  const [pollTimeoutSeconds, setPollTimeoutSeconds] = useState(300); // min 300s for /analyze so long runs aren't cut off
 
   // 🔥 Check session on load
   useEffect(() => {
@@ -33,6 +34,18 @@ function App() {
     return () => {
       listener.subscription.unsubscribe();
     };
+  }, []);
+
+  // Fetch backend health to get poll_timeout_seconds (used for /analyze fetch timeout)
+  useEffect(() => {
+    const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    fetch(`${apiBase}/health`)
+      .then((r) => r.json())
+      .then((data) => {
+        const sec = data?.poll_timeout_seconds;
+        if (typeof sec === "number" && sec >= 300) setPollTimeoutSeconds(sec);
+      })
+      .catch(() => {});
   }, []);
 
   // 🔐 Login
@@ -75,8 +88,10 @@ function App() {
 
     const controller = new AbortController();
     let timeoutId;
+    // Use at least 300s for full analyze so long S18 runs aren't cut off (value from GET /health or default)
+    const timeoutMs = fastMode ? 10000 : Math.max(300000, pollTimeoutSeconds * 1000);
     try {
-      timeoutId = setTimeout(() => controller.abort(), fastMode ? 10000 : 180000);
+      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const response = await fetch(`${apiBase}/analyze?fast=${fastMode}`, {
         method: "POST",
         signal: controller.signal,
@@ -232,9 +247,27 @@ function App() {
           )}
 
           {result && (
-            <pre style={{ marginTop: "20px" }}>
-              {JSON.stringify(result, null, 2)}
-            </pre>
+            <div style={{ marginTop: "20px" }}>
+              <pre style={{ marginBottom: "16px" }}>
+                {JSON.stringify(result, null, 2)}
+              </pre>
+              {result.wise != null && (
+                <div style={{ marginTop: "12px", padding: "12px", background: "#f5f5f5", borderRadius: "8px" }}>
+                  <strong>WISE flags</strong>{" "}
+                  {Array.isArray(result.wise.flags) && result.wise.flags.length > 0 ? (
+                    <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
+                      {result.wise.flags.map((f, i) => (
+                        <li key={i}>{String(f)}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span style={{ color: "#666" }}>
+                      {Array.isArray(result.wise.flags) ? "(none)" : `(${typeof result.wise.flags})`}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           <h3 style={{ marginTop: "24px" }}>Recent agent sessions (DB)</h3>

@@ -9,6 +9,7 @@ services:
       - ../../.env
     environment:
       - S18_BASE_URL=http://s18share-api:8000
+      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-300}
       - S18_POLL_TIMEOUT_SEC=${S18_POLL_TIMEOUT_SEC:-900}
       - S18_POLL_INTERVAL_SEC=${S18_POLL_INTERVAL_SEC:-2.0}
       - WISE_TIMEOUT_SEC=${WISE_TIMEOUT_SEC:-920}

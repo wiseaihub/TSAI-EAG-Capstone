@@ -51,10 +51,12 @@ def _debug_session_log(message: str, data: dict, hypothesis_id: str, run_id: str
 
 S18_BASE_URL = os.environ.get("S18_BASE_URL", "http://s18share-api:8000")
 S18_POLL_INTERVAL_SEC = float(os.environ.get("S18_POLL_INTERVAL_SEC", "2.0"))
-try:
-    S18_POLL_TIMEOUT_SEC = float(os.environ.get("S18_POLL_TIMEOUT_SEC", "900.0"))
-except (TypeError, ValueError):
-    S18_POLL_TIMEOUT_SEC = 900.0
+
+
+def _get_poll_timeout_sec() -> float:
+    """Total wait timeout for polling GET /runs/{id}. Use config (env RUN_POLL_TIMEOUT_SECONDS or settings.json)."""
+    from app.core.config import settings
+    return float(settings.run_poll_timeout_seconds)
 
 
 def _s18_auth_headers(access_token: str | None = None) -> dict:
@@ -159,7 +161,8 @@ def _invoke_s18_run(query: str, access_token: str | None = None) -> str:
 
 def _poll_s18_run(run_id: str, access_token: str | None = None) -> dict:
     """Poll GET /runs/{run_id} until status is completed or failed. Returns final response."""
-    deadline = time.monotonic() + S18_POLL_TIMEOUT_SEC
+    poll_timeout_sec = _get_poll_timeout_sec()
+    deadline = time.monotonic() + poll_timeout_sec
     headers = _s18_auth_headers(access_token)
     while time.monotonic() < deadline:
         resp = requests.get(f"{S18_BASE_URL}/runs/{run_id}", headers=headers, timeout=10)
@@ -188,7 +191,7 @@ def _poll_s18_run(run_id: str, access_token: str | None = None) -> dict:
             # #endregion
             return data
         time.sleep(S18_POLL_INTERVAL_SEC)
-    raise TimeoutError(f"S18 run {run_id} did not complete within {S18_POLL_TIMEOUT_SEC}s")
+    raise TimeoutError(f"S18 run {run_id} did not complete within {poll_timeout_sec}s")
 
 
 def _extract_s18_failure_reason(s18_data: dict) -> str | None:
@@ -211,6 +214,21 @@ def _extract_s18_failure_reason(s18_data: dict) -> str | None:
                 if isinstance(reason, str) and reason.strip():
                     return reason.strip()
     return None
+
+
+def _flags_to_list(flags: object) -> list:
+    """Normalize flags to a list of strings. Accept list or dict (e.g. CBC-style)."""
+    if isinstance(flags, list):
+        return [str(x) for x in flags if x is not None]
+    if isinstance(flags, dict):
+        out = []
+        for k, v in flags.items():
+            if v is True:
+                out.append(str(k))
+            elif v is not False and v is not None:
+                out.append(f"{k}: {v}")
+        return out
+    return []
 
 
 def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
@@ -259,33 +277,81 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
             "s18_status": status,
         }
 
-    # completed: derive from graph if possible (node outputs, etc.)
+    # completed: derive from top-level result first, then from graph nodes
     risk_level = "Moderate"
     confidence = 0.8
-    flags = []
+    flags: list[str] = []
 
+    def apply_output(out: dict | None) -> None:
+        nonlocal risk_level, confidence, flags
+        if not isinstance(out, dict):
+            return
+        if out.get("risk_level"):
+            risk_level = out["risk_level"]
+        if out.get("confidence") is not None:
+            try:
+                confidence = float(out["confidence"])
+            except (TypeError, ValueError):
+                pass
+        fl = out.get("flags")
+        if fl is not None:
+            flags.extend(_flags_to_list(fl))
+
+    # Top-level: some S18 responses put final result in output/result/response/data
+    for key in ("output", "result", "response", "data"):
+        raw = s18_data.get(key)
+        if raw is None:
+            continue
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        if isinstance(raw, dict):
+            apply_output(raw)
+            break
+
+    # Graph nodes: collect from each node's data.output, data.result, or output
     if isinstance(graph, dict):
         nodes = graph.get("nodes") or graph.get("graph", {}).get("nodes") or []
         for node in nodes:
-            if isinstance(node, dict):
-                out = node.get("data", {}).get("output") or node.get("output")
-                if isinstance(out, str):
+            if not isinstance(node, dict):
+                continue
+            data = node.get("data") or {}
+            for field in ("output", "result", "response", "value"):
+                raw = data.get(field) or node.get(field)
+                if raw is None:
+                    continue
+                if isinstance(raw, str):
                     try:
-                        out = json.loads(out)
+                        raw = json.loads(raw)
                     except (json.JSONDecodeError, TypeError):
-                        out = None
-                if isinstance(out, dict):
-                    if out.get("risk_level"):
-                        risk_level = out["risk_level"]
-                    if out.get("confidence") is not None:
-                        confidence = float(out["confidence"])
-                    if isinstance(out.get("flags"), list):
-                        flags = out["flags"]
+                        continue
+                if isinstance(raw, dict):
+                    apply_output(raw)
+                    break
+
+    # #region agent log — log what we extracted for debugging empty flags
+    _debug_log(
+        "S18 completed result",
+        {
+            "run_id": run_id,
+            "risk_level": risk_level,
+            "confidence": confidence,
+            "flags_count": len(flags),
+            "flags_preview": flags[:20] if flags else [],
+            "graph_keys": list(graph.keys()) if isinstance(graph, dict) else [],
+            "nodes_count": len(graph.get("nodes") or []) if isinstance(graph, dict) else 0,
+        },
+        "A;C",
+        run_id=run_id,
+    )
+    # #endregion
 
     return {
         "risk_level": risk_level,
         "confidence": confidence,
-        "flags": flags if flags else [],
+        "flags": flags,
         "session_id": run_id,
         "s18_status": status,
     }

@@ -3,6 +3,7 @@ import os
 import traceback
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
@@ -12,14 +13,17 @@ from app.db.session import get_db, SessionLocal
 from app.db.models import AgentSession
 from app.services.agent_service import run_cbc
 from app.agents.wise_adapter import run_wise_agent
+from app.core.config import settings
 from app.core.security import get_current_user
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 router = APIRouter()
 security = HTTPBearer()
 
-# WISE timeout: must exceed S18_POLL_TIMEOUT_SEC (default 900s). Allow overhead.
-WISE_TIMEOUT_SEC = float(os.environ.get("WISE_TIMEOUT_SEC", "920"))
+# Max seconds /analyze will wait for WISE (S18 run + poll). Must exceed run_poll_timeout_seconds.
+# Env WISE_TIMEOUT_SEC overrides; else poll_timeout + 120s so ~70s S18 runs don't hit handler timeout.
+_default_wise_timeout = getattr(settings, "run_poll_timeout_seconds", 300) + 120
+WISE_TIMEOUT_SEC = float(os.environ.get("WISE_TIMEOUT_SEC", str(max(920, _default_wise_timeout))))
 
 
 @router.get("/agent-sessions")
@@ -58,9 +62,12 @@ def analyze(
     db: Session = Depends(get_db),
     fast: bool = False,
 ):
-    """Run CBC + WISE analysis. Use ?fast=true to skip WISE and return CBC only (instant)."""
+    """Run CBC + WISE analysis. Use ?fast=true to skip WISE and return CBC only (instant).
+    When fast=false, S18 may take 1–3 min; clients should use a timeout >= GET /health poll_timeout_seconds (e.g. 300s).
+    """
     patient_id = user["sub"]
     token = credentials.credentials
+    poll_sec = getattr(settings, "run_poll_timeout_seconds", 300)
 
     try:
         # Run CBC first (fast, local)
@@ -75,7 +82,11 @@ def analyze(
         # Run WISE with timeout in a thread; use a fresh DB session (thread-safe)
         wise_result = _run_wise_with_timeout(payload, patient_id, token)
 
-        return {"cbc": cbc_result, "wise": wise_result}
+        # Tell clients (curl, gateways) to use at least this timeout so long S18 runs aren't aborted
+        return JSONResponse(
+            content={"cbc": cbc_result, "wise": wise_result},
+            headers={"X-Poll-Timeout-Seconds": str(poll_sec)},
+        )
     except Exception as e:
         tb = traceback.format_exc()
         raise HTTPException(
