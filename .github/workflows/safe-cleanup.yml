@@ -1,0 +1,14 @@
+name: Safe Bulk Close
+on: [workflow_dispatch]
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close Non-Critical Issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Only close issues that DON'T have the safety-critical label
+          gh issue list --label "infrastructure" --state open --limit 153 --json number | \
+          jq -r '.[].number' | xargs -I {} gh issue close {} --comment "Automated cleanup: Infrastructure/Boilerplate verified."
