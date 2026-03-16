@@ -76,7 +76,7 @@ def _s18_auth_headers(access_token: str | None = None) -> dict:
     return {}
 
 
-def _payload_to_query(payload, patient_id: str) -> str:
+def _payload_to_query(payload, patient_id: str, execution_mode: str = "full") -> str:
     """Turn payload (e.g. CBCInput or dict) into a single query string with patient context."""
     if hasattr(payload, "model_dump"):
         body = payload.model_dump()
@@ -84,7 +84,10 @@ def _payload_to_query(payload, patient_id: str) -> str:
         body = payload
     else:
         body = {"payload": str(payload)}
-    return f"[Patient ID: {patient_id}] Request: {json.dumps(body)}"
+    mode = (execution_mode or "full").strip().lower()
+    if mode not in {"fast", "full"}:
+        mode = "full"
+    return f"[Patient ID: {patient_id}] [Execution Mode: {mode}] Request: {json.dumps(body)}"
 
 
 def _invoke_s18_run(query: str, access_token: str | None = None) -> str:
@@ -357,12 +360,12 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
     }
 
 
-def run_wise_agent(payload, patient_id, db=None, access_token: str | None = None):
+def run_wise_agent(payload, patient_id, db=None, access_token: str | None = None, execution_mode: str = "full"):
     """
     Convert payload into S18 task format, invoke S18 runtime via HTTP,
     persist result to AgentSession, return structured result.
     """
-    query = _payload_to_query(payload, patient_id)
+    query = _payload_to_query(payload, patient_id, execution_mode=execution_mode)
     # #region agent log
     _debug_log("run_wise_agent: query built", {"query_preview": query[:300] + "..." if len(query) > 300 else query, "S18_BASE_URL": S18_BASE_URL, "patient_id": patient_id}, "B", run_id="")
     # #endregion
@@ -373,6 +376,7 @@ def run_wise_agent(payload, patient_id, db=None, access_token: str | None = None
             "patient_id_len": len(str(patient_id or "")),
             "s18_base_url": S18_BASE_URL,
             "payload_type": type(payload).__name__,
+            "execution_mode": execution_mode,
             "is_host_docker_internal": "host.docker.internal" in S18_BASE_URL,
             "uses_request_token": bool(access_token),
         },

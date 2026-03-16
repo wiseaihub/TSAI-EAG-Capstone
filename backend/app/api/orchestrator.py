@@ -62,8 +62,9 @@ def analyze(
     db: Session = Depends(get_db),
     fast: bool = False,
 ):
-    """Run CBC + WISE analysis. Use ?fast=true to skip WISE and return CBC only (instant).
-    When fast=false, S18 may take 1–3 min; clients should use a timeout >= GET /health poll_timeout_seconds (e.g. 300s).
+    """Run CBC + WISE analysis.
+    fast=true -> run WISE in single-agent fast mode.
+    fast=false -> run WISE in full multi-step mode (can take longer).
     """
     patient_id = user["sub"]
     token = credentials.credentials
@@ -76,11 +77,9 @@ def analyze(
         # Store CBC for EHRDataMinerAgent / mockehr to fetch as labs
         store_patient_cbc(patient_id, payload.model_dump())
 
-        if fast:
-            return {"cbc": cbc_result, "wise": None}
-
+        execution_mode = "fast" if fast else "full"
         # Run WISE with timeout in a thread; use a fresh DB session (thread-safe)
-        wise_result = _run_wise_with_timeout(payload, patient_id, token)
+        wise_result = _run_wise_with_timeout(payload, patient_id, token, execution_mode=execution_mode)
 
         # Tell clients (curl, gateways) to use at least this timeout so long S18 runs aren't aborted
         return JSONResponse(
@@ -99,12 +98,12 @@ def analyze(
         )
 
 
-def _run_wise_with_timeout(payload, patient_id, access_token: str) -> dict:
+def _run_wise_with_timeout(payload, patient_id, access_token: str, execution_mode: str = "full") -> dict:
     """Run WISE agent with timeout in a thread; use fresh DB session (thread-safe)."""
     def _run():
         db = SessionLocal()
         try:
-            return run_wise_agent(payload, patient_id, db, access_token)
+            return run_wise_agent(payload, patient_id, db, access_token, execution_mode=execution_mode)
         finally:
             db.close()
 

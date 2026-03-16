@@ -16,7 +16,7 @@ function App() {
   const [wbc, setWbc] = useState(7000);
   const [rbc, setRbc] = useState(4.5);
   const [platelets, setPlatelets] = useState(250000);
-  const [fastMode, setFastMode] = useState(true); // Skip WISE for instant CBC results
+  const [fastMode, setFastMode] = useState(true); // Fast WISE mode (single-agent in S18)
   const [pollTimeoutSeconds, setPollTimeoutSeconds] = useState(300); // min 300s for /analyze so long runs aren't cut off
 
   // 🔥 Check session on load
@@ -88,8 +88,11 @@ function App() {
 
     const controller = new AbortController();
     let timeoutId;
-    // Use at least 300s for full analyze so long S18 runs aren't cut off (value from GET /health or default)
-    const timeoutMs = fastMode ? 10000 : Math.max(300000, pollTimeoutSeconds * 1000);
+    // Fast mode still runs WISE (single-agent), so avoid short abort windows.
+    // Keep full mode at poll timeout floor; fast mode uses a shorter but safe floor.
+    const timeoutMs = fastMode
+      ? Math.max(120000, Math.floor((pollTimeoutSeconds * 1000) / 2))
+      : Math.max(300000, pollTimeoutSeconds * 1000);
     try {
       timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const response = await fetch(`${apiBase}/analyze?fast=${fastMode}`, {
@@ -234,15 +237,17 @@ function App() {
                 checked={fastMode}
                 onChange={(e) => setFastMode(e.target.checked)}
               />
-              {" "}Fast mode (CBC only, skip WISE) — instant results
+              {" "}Fast mode (single-agent WISE flow) — quicker results
             </label>
           </div>
           <button onClick={analyze} disabled={analyzing}>
-            {analyzing ? (fastMode ? "Analyzing..." : "Analyzing... (up to 30s)") : "Run CBC Analysis"}
+            {analyzing ? "Analyzing..." : "Run CBC Analysis"}
           </button>
           {analyzing && (
             <p style={{ marginTop: "8px", color: "#666", fontSize: "14px" }}>
-              {fastMode ? "Analyzing..." : "WISE analysis may take 1–3 minutes. Please do not refresh."}
+              {fastMode
+                ? "Fast WISE mode usually completes quicker, but may take up to ~2 minutes."
+                : "Full WISE analysis may take 1–3 minutes. Please do not refresh."}
             </p>
           )}
 
