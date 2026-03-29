@@ -4,6 +4,7 @@ invokes S18 runtime via HTTP, persists result to AgentSession, returns structure
 """
 import json
 import os
+import re
 import time
 from datetime import datetime
 from uuid import uuid4
@@ -88,6 +89,161 @@ def _payload_to_query(payload, patient_id: str, execution_mode: str = "full") ->
     if mode not in {"fast", "full"}:
         mode = "full"
     return f"[Patient ID: {patient_id}] [Execution Mode: {mode}] Request: {json.dumps(body)}"
+
+
+def _normalize_execution_mode(execution_mode: str) -> str:
+    mode = (execution_mode or "full").strip().lower()
+    if mode not in {"fast", "full"}:
+        mode = "full"
+    return mode
+
+
+def _mental_health_to_query(payload, patient_id: str, execution_mode: str, local_screening: dict) -> str:
+    """Build S18 query for mental health task with embedded local screening summary."""
+    if hasattr(payload, "model_dump"):
+        patient_payload = payload.model_dump()
+    elif isinstance(payload, dict):
+        patient_payload = payload
+    else:
+        patient_payload = {"payload": str(payload)}
+    mode = _normalize_execution_mode(execution_mode)
+    body = {
+        "task": "mental_health",
+        "patient_payload": patient_payload,
+        "local_screening": local_screening,
+    }
+    screening_json = json.dumps(local_screening, default=str)
+    return (
+        f"[Task: mental_health] [Patient ID: {patient_id}] "
+        f"[Local screening: {screening_json}] [Execution Mode: {mode}] "
+        f"Request: {json.dumps(body, default=str)}"
+    )
+
+
+def _run_s18_agent(
+    query: str,
+    patient_id: str,
+    db,
+    access_token: str | None,
+    agent_name: str,
+    agent_version: str = "v1",
+    *,
+    log_entry_label: str = "run_s18_agent",
+) -> dict:
+    """
+    POST /runs, poll, map to risk_level/confidence/flags, persist AgentSession.
+    Returns public fields only (no s18_status).
+    """
+    # #region agent log
+    _debug_log(
+        f"{log_entry_label}: query built",
+        {
+            "query_preview": query[:300] + "..." if len(query) > 300 else query,
+            "S18_BASE_URL": S18_BASE_URL,
+            "patient_id": patient_id,
+            "agent_name": agent_name,
+        },
+        "B",
+        run_id="",
+    )
+    _debug_session_log(
+        f"{log_entry_label} entry",
+        {
+            "patient_id_len": len(str(patient_id or "")),
+            "s18_base_url": S18_BASE_URL,
+            "execution_query_len": len(query),
+            "is_host_docker_internal": "host.docker.internal" in S18_BASE_URL,
+            "uses_request_token": bool(access_token),
+            "agent_name": agent_name,
+        },
+        "H1;H2;H4",
+        run_id="",
+    )
+    # #endregion
+    try:
+        run_id = _invoke_s18_run(query, access_token=access_token)
+    except requests.RequestException as e:
+        result = {
+            "risk_level": "High",
+            "confidence": 0.0,
+            "flags": [f"s18_start_error: {str(e)}"],
+            "session_id": str(uuid4()),
+            "s18_status": "error",
+        }
+        record = AgentSession(
+            session_id=result["session_id"],
+            patient_id=patient_id,
+            agent_name=agent_name,
+            agent_version=agent_version,
+            risk_level=result["risk_level"],
+            confidence=result["confidence"],
+            flags=result["flags"],
+            timestamp=datetime.utcnow(),
+        )
+        if db is not None:
+            db.add(record)
+            db.commit()
+        return {k: v for k, v in result.items() if k != "s18_status"}
+
+    try:
+        s18_data = _poll_s18_run(run_id, access_token=access_token)
+    except (TimeoutError, requests.RequestException) as e:
+        if isinstance(e, TimeoutError):
+            result = {
+                "risk_level": "Moderate",
+                "confidence": 0.2,
+                "flags": [
+                    "s18_poll_timeout_soft_fallback",
+                    f"s18_poll_error: {str(e)}",
+                ],
+                "session_id": run_id,
+                "s18_status": "error",
+            }
+        else:
+            result = {
+                "risk_level": "High",
+                "confidence": 0.0,
+                "flags": [f"s18_poll_error: {str(e)}"],
+                "session_id": run_id,
+                "s18_status": "error",
+            }
+        record = AgentSession(
+            session_id=run_id,
+            patient_id=patient_id,
+            agent_name=agent_name,
+            agent_version=agent_version,
+            risk_level=result["risk_level"],
+            confidence=result["confidence"],
+            flags=result["flags"],
+            timestamp=datetime.utcnow(),
+        )
+        if db is not None:
+            db.add(record)
+            db.commit()
+        return {k: v for k, v in result.items() if k != "s18_status"}
+
+    result = _s18_response_to_result(s18_data, run_id)
+    session_id = result.get("session_id") or str(uuid4())
+
+    record = AgentSession(
+        session_id=session_id,
+        patient_id=patient_id,
+        agent_name=agent_name,
+        agent_version=agent_version,
+        risk_level=result["risk_level"],
+        confidence=result["confidence"],
+        flags=result["flags"],
+        timestamp=datetime.utcnow(),
+    )
+    if db is not None:
+        db.add(record)
+        db.commit()
+
+    return {
+        "risk_level": result["risk_level"],
+        "confidence": result["confidence"],
+        "flags": result["flags"],
+    }
 
 
 def _invoke_s18_run(query: str, access_token: str | None = None) -> str:
@@ -234,6 +390,66 @@ def _flags_to_list(flags: object) -> list:
     return []
 
 
+def _dedupe_flags(flags: list[str]) -> list[str]:
+    """Remove duplicate flags while preserving first-seen order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for flag in flags:
+        item = str(flag)
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def _recommendations_to_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    if isinstance(value, str):
+        v = value.strip()
+        return [v] if v else []
+    return []
+
+
+def _extract_recommendations_from_text(text: str) -> list[str]:
+    if not isinstance(text, str) or not text.strip():
+        return []
+    lowered = text.lower()
+    marker = "recommended next steps include"
+    start = lowered.find(marker)
+    if start == -1:
+        return []
+    chunk = text[start + len(marker):]
+    chunk = chunk.split("\n", 1)[0]
+    chunk = chunk.strip(" .:-")
+    if not chunk:
+        return []
+    # Split on commas and conjunctions for short, UI-ready items.
+    parts = re.split(r",|\band\b", chunk, flags=re.IGNORECASE)
+    out: list[str] = []
+    for part in parts:
+        item = part.strip(" .;-")
+        if item:
+            out.append(item)
+    return out
+
+
+def _dedupe_recommendations(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        normalized = " ".join(str(item).split()).strip()
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(normalized)
+    return out
+
+
 def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
     """Map S18 GET response to WISE result shape: risk_level, confidence, flags."""
     status = s18_data.get("status", "unknown")
@@ -284,9 +500,10 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
     risk_level = "Moderate"
     confidence = 0.8
     flags: list[str] = []
+    recommendations: list[str] = []
 
     def apply_output(out: dict | None) -> None:
-        nonlocal risk_level, confidence, flags
+        nonlocal risk_level, confidence, flags, recommendations
         if not isinstance(out, dict):
             return
         if out.get("risk_level"):
@@ -299,6 +516,9 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
         fl = out.get("flags")
         if fl is not None:
             flags.extend(_flags_to_list(fl))
+        recommendations.extend(_recommendations_to_list(out.get("recommendations")))
+        recommendations.extend(_recommendations_to_list(out.get("next_steps")))
+        recommendations.extend(_extract_recommendations_from_text(str(out.get("response", ""))))
 
     # Top-level: some S18 responses put final result in output/result/response/data
     for key in ("output", "result", "response", "data"):
@@ -334,6 +554,9 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
                     apply_output(raw)
                     break
 
+    flags = _dedupe_flags(flags)
+    recommendations = _dedupe_recommendations(recommendations)
+
     # #region agent log — log what we extracted for debugging empty flags
     _debug_log(
         "S18 completed result",
@@ -343,6 +566,8 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
             "confidence": confidence,
             "flags_count": len(flags),
             "flags_preview": flags[:20] if flags else [],
+            "recommendations_count": len(recommendations),
+            "recommendations_preview": recommendations[:10] if recommendations else [],
             "graph_keys": list(graph.keys()) if isinstance(graph, dict) else [],
             "nodes_count": len(graph.get("nodes") or []) if isinstance(graph, dict) else 0,
         },
@@ -355,6 +580,7 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
         "risk_level": risk_level,
         "confidence": confidence,
         "flags": flags,
+        "recommendations": recommendations,
         "session_id": run_id,
         "s18_status": status,
     }
@@ -366,106 +592,36 @@ def run_wise_agent(payload, patient_id, db=None, access_token: str | None = None
     persist result to AgentSession, return structured result.
     """
     query = _payload_to_query(payload, patient_id, execution_mode=execution_mode)
-    # #region agent log
-    _debug_log("run_wise_agent: query built", {"query_preview": query[:300] + "..." if len(query) > 300 else query, "S18_BASE_URL": S18_BASE_URL, "patient_id": patient_id}, "B", run_id="")
-    # #endregion
-    # #region agent log
-    _debug_session_log(
-        "run_wise_agent entry",
-        {
-            "patient_id_len": len(str(patient_id or "")),
-            "s18_base_url": S18_BASE_URL,
-            "payload_type": type(payload).__name__,
-            "execution_mode": execution_mode,
-            "is_host_docker_internal": "host.docker.internal" in S18_BASE_URL,
-            "uses_request_token": bool(access_token),
-        },
-        "H1;H2;H4",
-        run_id="",
+    return _run_s18_agent(
+        query,
+        patient_id,
+        db,
+        access_token,
+        "wise_agent",
+        "v1",
+        log_entry_label="run_wise_agent",
     )
-    # #endregion
-    try:
-        run_id = _invoke_s18_run(query, access_token=access_token)
-    except requests.RequestException as e:
-        result = {
-            "risk_level": "High",
-            "confidence": 0.0,
-            "flags": [f"s18_start_error: {str(e)}"],
-            "session_id": str(uuid4()),
-            "s18_status": "error",
-        }
-        record = AgentSession(
-            session_id=result["session_id"],
-            patient_id=patient_id,
-            agent_name="wise_agent",
-            agent_version="v1",
-            risk_level=result["risk_level"],
-            confidence=result["confidence"],
-            flags=result["flags"],
-            timestamp=datetime.utcnow(),
-        )
-        if db is not None:
-            db.add(record)
-            db.commit()
-        return {k: v for k, v in result.items() if k != "s18_status"}
-
-    try:
-        s18_data = _poll_s18_run(run_id, access_token=access_token)
-    except (TimeoutError, requests.RequestException) as e:
-        if isinstance(e, TimeoutError):
-            result = {
-                "risk_level": "Moderate",
-                "confidence": 0.2,
-                "flags": [
-                    "s18_poll_timeout_soft_fallback",
-                    f"s18_poll_error: {str(e)}",
-                ],
-                "session_id": run_id,
-                "s18_status": "error",
-            }
-        else:
-            result = {
-                "risk_level": "High",
-                "confidence": 0.0,
-                "flags": [f"s18_poll_error: {str(e)}"],
-                "session_id": run_id,
-                "s18_status": "error",
-            }
-        record = AgentSession(
-            session_id=run_id,
-            patient_id=patient_id,
-            agent_name="wise_agent",
-            agent_version="v1",
-            risk_level=result["risk_level"],
-            confidence=result["confidence"],
-            flags=result["flags"],
-            timestamp=datetime.utcnow(),
-        )
-        if db is not None:
-            db.add(record)
-            db.commit()
-        return {k: v for k, v in result.items() if k != "s18_status"}
-
-    result = _s18_response_to_result(s18_data, run_id)
-    session_id = result.get("session_id") or str(uuid4())
 
 
-    record = AgentSession(
-        session_id=session_id,
-        patient_id=patient_id,
-        agent_name="wise_agent",
-        agent_version="v1",
-        risk_level=result["risk_level"],
-        confidence=result["confidence"],
-        flags=result["flags"],
-        timestamp=datetime.utcnow(),
+def run_mental_health_wise(
+    payload,
+    patient_id: str,
+    local_screening: dict,
+    db=None,
+    access_token: str | None = None,
+    execution_mode: str = "full",
+):
+    """
+    Mental health S18 pass: query tags [Task: mental_health] and embeds local screening summary.
+    Persists AgentSession with agent_name mental_health_wise.
+    """
+    query = _mental_health_to_query(payload, patient_id, execution_mode, local_screening)
+    return _run_s18_agent(
+        query,
+        patient_id,
+        db,
+        access_token,
+        "mental_health_wise",
+        "v1",
+        log_entry_label="run_mental_health_wise",
     )
-    if db is not None:
-        db.add(record)
-        db.commit()
-
-    return {
-        "risk_level": result["risk_level"],
-        "confidence": result["confidence"],
-        "flags": result["flags"],
-    }

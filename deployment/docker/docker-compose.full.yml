@@ -16,10 +16,11 @@ services:
       - ../../.env
     environment:
       - S18_BASE_URL=http://s18share-api:8000
-      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-300}
+      # Must match long S18 full-graph runs (often >5 min); keep WISE_TIMEOUT_SEC > poll window.
+      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
       - S18_POLL_TIMEOUT_SEC=${S18_POLL_TIMEOUT_SEC:-900}
       - S18_POLL_INTERVAL_SEC=${S18_POLL_INTERVAL_SEC:-2.0}
-      - WISE_TIMEOUT_SEC=${WISE_TIMEOUT_SEC:-920}
+      - WISE_TIMEOUT_SEC=${WISE_TIMEOUT_SEC:-1200}
       - DEBUG_LOG_PATH=/workspace/debug-f905fa.log
     volumes:
       - ../../:/workspace
@@ -55,6 +56,8 @@ services:
       - AUTH_ENABLED=${S18_AUTH_ENABLED:-false}
       - OLLAMA_BASE_URL=http://s18share-ollama:11434
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-300}
+      # Align advertised /runs poll hint with wise-ai client (optional; wise-ai uses its own poll loop).
+      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
       - WISE_MOCKEHR_BASE_URL=http://backend:8000
       - DEBUG_LOG_PATH=${DEBUG_LOG_PATH:-/app/data/debug-f905fa.log}
     volumes:

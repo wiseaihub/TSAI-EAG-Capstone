@@ -12,8 +12,9 @@ REPO_ROOT = CURRENT_FILE.parents[3]
 load_dotenv(REPO_ROOT / ".env", override=False)
 load_dotenv(BACKEND_DIR / ".env", override=False)
 
-# Default total wait timeout for polling GET /runs/{id} (seconds). Clients/gateways should use at least this.
-DEFAULT_RUN_POLL_TIMEOUT_SECONDS = 300
+# Default total wait timeout for polling GET /runs/{id} (seconds). Full S18 flows often exceed 5 minutes.
+# 900s (15m) reduces false s18_poll_timeout on typical WISE/mental-health runs; override via env if needed.
+DEFAULT_RUN_POLL_TIMEOUT_SECONDS = 900
 
 
 def _load_run_poll_timeout_from_settings_json() -> int | None:
@@ -34,7 +35,7 @@ class Settings:
     DATABASE_URL: str | None = os.getenv("DATABASE_URL")
 
     # Total wait timeout for polling S18 GET /runs/{id}. Exposed via GET /health so clients/gateways can set their timeout.
-    # Priority: env RUN_POLL_TIMEOUT_SECONDS > settings.json run_poll_timeout_seconds > env S18_POLL_TIMEOUT_SEC (backward compat) > default 300.
+    # Priority: env RUN_POLL_TIMEOUT_SECONDS > settings.json run_poll_timeout_seconds > env S18_POLL_TIMEOUT_SEC (backward compat) > default 900.
     @property
     def run_poll_timeout_seconds(self) -> int:
         env_val = os.getenv("RUN_POLL_TIMEOUT_SECONDS")
