@@ -1,0 +1,28 @@
+# Use this file to run from pre-built images on GitHub Container Registry (GHCR).
+# Default: wiseaihub (TSAI-EAG-Capstone). Override: GITHUB_OWNER=myorg docker compose -f docker-compose.ghcr.yml up -d
+# Optional: IMAGE_TAG=dev to use dev branch images.
+#
+# Images (pushed by .github/workflows/docker-publish.yml on push to main/master/dev):
+#   ghcr.io/wiseaihub/tsai-eag-capstone-backend:latest (or :dev)
+#   ghcr.io/wiseaihub/tsai-eag-capstone-frontend:latest (or :dev)
+
+services:
+  backend:
+    image: ghcr.io/${GITHUB_OWNER:-wiseaihub}/tsai-eag-capstone-backend:${IMAGE_TAG:-latest}
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../../.env
+    environment:
+      - S18_BASE_URL=${S18_BASE_URL:-http://s18share-api:8000}
+      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
+      - S18_POLL_TIMEOUT_SEC=${S18_POLL_TIMEOUT_SEC:-900}
+      - S18_POLL_INTERVAL_SEC=${S18_POLL_INTERVAL_SEC:-2.0}
+      - WISE_TIMEOUT_SEC=${WISE_TIMEOUT_SEC:-1200}
+
+  frontend:
+    image: ghcr.io/${GITHUB_OWNER:-wiseaihub}/tsai-eag-capstone-frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend

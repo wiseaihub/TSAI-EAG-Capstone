@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    networks:
+      - default
+      - wise_net
+    env_file:
+      - ../../.env
+    environment:
+      - S18_BASE_URL=http://s18share-api:8000
+      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
+      - S18_POLL_TIMEOUT_SEC=${S18_POLL_TIMEOUT_SEC:-900}
+      - S18_POLL_INTERVAL_SEC=${S18_POLL_INTERVAL_SEC:-2.0}
+      - WISE_TIMEOUT_SEC=${WISE_TIMEOUT_SEC:-1200}
+      - DEBUG_LOG_PATH=/workspace/debug-f905fa.log
+    volumes:
+      - ../../:/workspace
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL in deployment/docker/.env}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY in deployment/docker/.env}
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+networks:
+  default:
+  wise_net:
+    external: true
+    name: docker_wise_net
