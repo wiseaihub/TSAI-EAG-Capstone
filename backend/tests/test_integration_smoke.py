@@ -2,6 +2,9 @@
 
 Requires TEST_ACCESS_TOKEN env var (Supabase JWT) and a running DB.
 Run with: TEST_ACCESS_TOKEN=<token> pytest tests/test_integration_smoke.py
+
+Skipped in default CI (marked integration). Direct SQL reads need the same JWT
+session as the API: use apply_supabase_jwt_claims before querying RLS tables.
 """
 
 import os
@@ -15,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.api import orchestrator as orch
 from app.core.security import get_current_user
 from app.db.session import get_db, SessionLocal
+from app.db.rls_context import apply_supabase_jwt_claims
 from app.db.models import Case, AgentRun, AgentMessage, AuditEvent
 
 _TEMP_TOKEN = os.environ.get("TEST_ACCESS_TOKEN", "")
@@ -28,6 +32,15 @@ def _real_db():
         yield db
     finally:
         db.close()
+
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not os.environ.get("TEST_ACCESS_TOKEN"),
+        reason="Set TEST_ACCESS_TOKEN for live integration tests against Supabase",
+    ),
+]
 
 
 @pytest.fixture
@@ -79,6 +92,7 @@ def test_analyze_creates_case_and_runs(live_client: TestClient, monkeypatch):
 
     db: Session = SessionLocal()
     try:
+        apply_supabase_jwt_claims(db, _PATIENT_ID)
         cases = (
             db.query(Case)
             .filter(Case.user_id == _PATIENT_ID)
