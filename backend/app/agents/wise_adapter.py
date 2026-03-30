@@ -5,13 +5,14 @@ invokes S18 runtime via HTTP, persists result to AgentSession, returns structure
 import json
 import os
 import re
+import threading
 import time
 from datetime import datetime
 from uuid import uuid4
 
 import requests
 
-from app.db.models import AgentSession
+from app.db.models import AgentRun, AgentSession, RunArtifact
 
 # #region agent log
 DEBUG_LOG_PATH = os.environ.get("DEBUG_LOG_PATH", "debug-f905fa.log")
@@ -127,6 +128,8 @@ def _run_s18_agent(
     access_token: str | None,
     agent_name: str,
     agent_version: str = "v1",
+    case_id: str | None = None,
+    cancel_event: threading.Event | None = None,
     *,
     log_entry_label: str = "run_s18_agent",
 ) -> dict:
@@ -182,11 +185,27 @@ def _run_s18_agent(
         )
         if db is not None:
             db.add(record)
+            if case_id:
+                db.add(
+                    AgentRun(
+                        id=str(uuid4()),
+                        case_id=case_id,
+                        session_id=result["session_id"],
+                        s18_run_id=None,
+                        agent_name=agent_name,
+                        status="failed",
+                        started_at=datetime.utcnow(),
+                        finished_at=datetime.utcnow(),
+                        error_text="s18_start_error",
+                        metrics={"flags": result["flags"]},
+                        created_at=datetime.utcnow(),
+                    )
+                )
             db.commit()
         return {k: v for k, v in result.items() if k != "s18_status"}
 
     try:
-        s18_data = _poll_s18_run(run_id, access_token=access_token)
+        s18_data = _poll_s18_run(run_id, access_token=access_token, cancel_event=cancel_event)
     except (TimeoutError, requests.RequestException) as e:
         if isinstance(e, TimeoutError):
             result = {
@@ -219,6 +238,22 @@ def _run_s18_agent(
         )
         if db is not None:
             db.add(record)
+            if case_id:
+                db.add(
+                    AgentRun(
+                        id=str(uuid4()),
+                        case_id=case_id,
+                        session_id=run_id,
+                        s18_run_id=run_id,
+                        agent_name=agent_name,
+                        status="failed",
+                        started_at=datetime.utcnow(),
+                        finished_at=datetime.utcnow(),
+                        error_text=str(e)[:500],
+                        metrics={"flags": result["flags"]},
+                        created_at=datetime.utcnow(),
+                    )
+                )
             db.commit()
         return {k: v for k, v in result.items() if k != "s18_status"}
 
@@ -237,12 +272,46 @@ def _run_s18_agent(
     )
     if db is not None:
         db.add(record)
+        if case_id:
+            run_row_id = str(uuid4())
+            db.add(
+                AgentRun(
+                    id=run_row_id,
+                    case_id=case_id,
+                    session_id=session_id,
+                    s18_run_id=run_id,
+                    agent_name=agent_name,
+                    status="completed",
+                    started_at=datetime.utcnow(),
+                    finished_at=datetime.utcnow(),
+                    error_text=None,
+                    metrics={"confidence": result["confidence"]},
+                    created_at=datetime.utcnow(),
+                )
+            )
+            db.add(
+                RunArtifact(
+                    id=str(uuid4()),
+                    run_id=run_row_id,
+                    artifact_type="wise_result",
+                    storage_path=None,
+                    payload={
+                        "risk_level": result["risk_level"],
+                        "confidence": result["confidence"],
+                        "flags": result["flags"],
+                        "recommendations": result.get("recommendations", []),
+                    },
+                    created_at=datetime.utcnow(),
+                )
+            )
         db.commit()
 
     return {
         "risk_level": result["risk_level"],
         "confidence": result["confidence"],
         "flags": result["flags"],
+        "session_id": session_id,
+        "recommendations": result.get("recommendations", []),
     }
 
 
@@ -318,14 +387,24 @@ def _invoke_s18_run(query: str, access_token: str | None = None) -> str:
     return data["id"]
 
 
-def _poll_s18_run(run_id: str, access_token: str | None = None) -> dict:
-    """Poll GET /runs/{run_id} until status is completed or failed. Returns final response."""
+def _poll_s18_run(
+    run_id: str,
+    access_token: str | None = None,
+    cancel_event: "threading.Event | None" = None,
+) -> dict:
+    """Poll GET /runs/{run_id} until status is completed or failed. Returns final response.
+
+    If *cancel_event* is set by the caller (e.g. orchestrator timeout), the loop
+    exits early with a TimeoutError so the background thread stops promptly
+    instead of continuing to poll (and hold a DB connection) for minutes.
+    """
     poll_timeout_sec = _get_poll_timeout_sec()
     deadline = time.monotonic() + poll_timeout_sec
     headers = _s18_auth_headers(access_token)
     while time.monotonic() < deadline:
+        if cancel_event is not None and cancel_event.is_set():
+            raise TimeoutError(f"S18 run {run_id} cancelled by caller (orchestrator timeout)")
         resp = requests.get(f"{S18_BASE_URL}/runs/{run_id}", headers=headers, timeout=10)
-        # S18 can briefly return 404 right after run creation while state is materializing.
         if resp.status_code == 404:
             time.sleep(S18_POLL_INTERVAL_SEC)
             continue
@@ -349,7 +428,10 @@ def _poll_s18_run(run_id: str, access_token: str | None = None) -> dict:
             _debug_log("S18 poll final response", safe, "A;C;D;E", run_id=run_id)
             # #endregion
             return data
-        time.sleep(S18_POLL_INTERVAL_SEC)
+        if cancel_event is not None:
+            cancel_event.wait(S18_POLL_INTERVAL_SEC)
+        else:
+            time.sleep(S18_POLL_INTERVAL_SEC)
     raise TimeoutError(f"S18 run {run_id} did not complete within {poll_timeout_sec}s")
 
 
@@ -586,7 +668,15 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
     }
 
 
-def run_wise_agent(payload, patient_id, db=None, access_token: str | None = None, execution_mode: str = "full"):
+def run_wise_agent(
+    payload,
+    patient_id,
+    db=None,
+    access_token: str | None = None,
+    execution_mode: str = "full",
+    case_id: str | None = None,
+    cancel_event: threading.Event | None = None,
+):
     """
     Convert payload into S18 task format, invoke S18 runtime via HTTP,
     persist result to AgentSession, return structured result.
@@ -599,6 +689,8 @@ def run_wise_agent(payload, patient_id, db=None, access_token: str | None = None
         access_token,
         "wise_agent",
         "v1",
+        case_id=case_id,
+        cancel_event=cancel_event,
         log_entry_label="run_wise_agent",
     )
 
@@ -610,6 +702,8 @@ def run_mental_health_wise(
     db=None,
     access_token: str | None = None,
     execution_mode: str = "full",
+    case_id: str | None = None,
+    cancel_event: threading.Event | None = None,
 ):
     """
     Mental health S18 pass: query tags [Task: mental_health] and embeds local screening summary.
@@ -623,5 +717,7 @@ def run_mental_health_wise(
         access_token,
         "mental_health_wise",
         "v1",
+        case_id=case_id,
+        cancel_event=cancel_event,
         log_entry_label="run_mental_health_wise",
     )

@@ -1,6 +1,9 @@
-"""Unit tests for WISE adapter result normalization."""
+"""Unit tests for WISE adapter result normalization and cancel-event."""
 
-from app.agents.wise_adapter import _s18_response_to_result
+import threading
+import time
+
+from app.agents.wise_adapter import _s18_response_to_result, _poll_s18_run
 
 
 def test_s18_response_to_result_dedupes_flags_across_sources():
@@ -60,3 +63,22 @@ def test_s18_response_to_result_extracts_recommendations_from_response_text():
     assert "CMP" in result["recommendations"]
     assert "iron studies" in result["recommendations"]
     assert "peripheral blood smear" in result["recommendations"]
+
+
+def test_poll_s18_run_exits_on_cancel_event(monkeypatch):
+    """When cancel_event is set before the first poll iteration,
+    _poll_s18_run should raise TimeoutError within ~0s, not sleep
+    for the full poll timeout."""
+    monkeypatch.setattr("app.agents.wise_adapter._get_poll_timeout_sec", lambda: 300)
+
+    cancel = threading.Event()
+    cancel.set()
+
+    start = time.monotonic()
+    try:
+        _poll_s18_run("fake-run-id", access_token=None, cancel_event=cancel)
+        assert False, "Expected TimeoutError"
+    except TimeoutError as e:
+        elapsed = time.monotonic() - start
+        assert "cancelled by caller" in str(e)
+        assert elapsed < 2.0, f"Should exit immediately but took {elapsed:.1f}s"

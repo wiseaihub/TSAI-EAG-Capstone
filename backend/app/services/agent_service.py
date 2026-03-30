@@ -1,5 +1,8 @@
+from datetime import datetime
+from uuid import uuid4
+
 from app.agents.cbc_agent import CBCAgent
-from app.db.models import AgentSession
+from app.db.models import AgentRun, AgentSession, RunArtifact
 
 _cbc_agent = CBCAgent()
 
@@ -28,7 +31,7 @@ def _cbc_recommendations(payload, flags: list[str]) -> list[str]:
     return deduped
 
 
-def run_cbc(payload, db, patient_id):
+def run_cbc(payload, db, patient_id, case_id: str | None = None):
     """
     CBC analysis using the same rule set and human-readable flag strings as CBCAgent
     (e.g. Severe anemia, Leukocytosis).
@@ -48,6 +51,42 @@ def run_cbc(payload, db, patient_id):
     )
 
     db.add(record)
+
+    if case_id:
+        run_id = str(uuid4())
+        run_payload = {
+            "risk_level": analysis["risk_level"],
+            "confidence": analysis["confidence"],
+            "flags": analysis["flags"],
+            "recommendations": recommendations,
+        }
+        db.add(
+            AgentRun(
+                id=run_id,
+                case_id=case_id,
+                session_id=analysis["session_id"],
+                s18_run_id=None,
+                agent_name=_cbc_agent.name,
+                status="completed",
+                started_at=analysis["timestamp"],
+                finished_at=analysis["timestamp"],
+                error_text=None,
+                metrics={"confidence": analysis["confidence"]},
+                created_at=analysis["timestamp"],
+            )
+        )
+        db.flush()
+        db.add(
+            RunArtifact(
+                id=str(uuid4()),
+                run_id=run_id,
+                artifact_type="cbc_result",
+                storage_path=None,
+                payload=run_payload,
+                created_at=datetime.utcnow(),
+            )
+        )
+
     db.commit()
 
     return {

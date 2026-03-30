@@ -1,7 +1,11 @@
 import concurrent.futures
+import json
 import os
+import threading
 import traceback
 import time
+from datetime import datetime
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -12,7 +16,7 @@ from app.schemas.cbc import CBCInput
 from app.schemas.mental_health import MentalHealthInput
 from app.api.mock_ehr import store_patient_cbc
 from app.db.session import get_db, SessionLocal
-from app.db.models import AgentSession
+from app.db.models import AgentMessage, AgentSession, AuditEvent, Case
 from app.services.agent_service import run_cbc
 from app.services.mental_health_service import (
     run_mental_health_screening,
@@ -49,6 +53,119 @@ def _dedupe_recommendations(*groups: object) -> list[str]:
             seen.add(key)
             out.append(text)
     return out
+
+
+def _create_case_and_input_message(db: Session, patient_id: str, payload: CBCInput) -> str | None:
+    """Create a case row and capture the incoming request as a user message."""
+    case_id = str(uuid4())
+    payload_dict = payload.model_dump()
+    try:
+        db.add(
+            Case(
+                id=case_id,
+                user_id=patient_id,
+                status="running",
+                title="CBC analysis request",
+                input_payload=payload_dict,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+        )
+        db.flush()
+        db.add(
+            AgentMessage(
+                case_id=case_id,
+                run_id=None,
+                role="user",
+                content=json.dumps(payload_dict, default=str),
+                meta={"source": "orchestrator:/analyze"},
+                created_at=datetime.utcnow(),
+            )
+        )
+        db.add(
+            AuditEvent(
+                user_id=patient_id,
+                entity_type="case",
+                entity_id=case_id,
+                event_type="case_created",
+                event_payload={"source": "/analyze"},
+                created_at=datetime.utcnow(),
+            )
+        )
+        db.commit()
+        return case_id
+    except Exception as e:
+        db.rollback()
+        print(f"[analyze] dual-write skipped during case creation: {type(e).__name__}: {e}")
+        return None
+
+
+def _finalize_case_success(
+    db: Session,
+    case_id: str | None,
+    patient_id: str,
+    cbc_result: dict,
+    wise_result: dict,
+    recommendations: list[str],
+) -> None:
+    if not case_id:
+        return
+    try:
+        row = db.query(Case).filter(Case.id == case_id).first()
+        if row:
+            row.status = "completed"
+            row.updated_at = datetime.utcnow()
+        db.add(
+            AgentMessage(
+                case_id=case_id,
+                run_id=None,
+                role="assistant",
+                content=json.dumps(
+                    {"cbc": cbc_result, "wise": wise_result, "recommendations": recommendations},
+                    default=str,
+                ),
+                meta={"source": "orchestrator:/analyze"},
+                created_at=datetime.utcnow(),
+            )
+        )
+        db.add(
+            AuditEvent(
+                user_id=patient_id,
+                entity_type="case",
+                entity_id=case_id,
+                event_type="case_completed",
+                event_payload={"recommendation_count": len(recommendations)},
+                created_at=datetime.utcnow(),
+            )
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"[analyze] dual-write skipped during success finalize: {type(e).__name__}: {e}")
+
+
+def _finalize_case_failure(db: Session, case_id: str | None, patient_id: str, error_text: str) -> None:
+    if not case_id:
+        return
+    try:
+        row = db.query(Case).filter(Case.id == case_id).first()
+        if row:
+            row.status = "failed"
+            row.updated_at = datetime.utcnow()
+        db.add(
+            AuditEvent(
+                user_id=patient_id,
+                entity_type="case",
+                entity_id=case_id,
+                event_type="case_failed",
+                event_payload={"error": error_text[:500]},
+                created_at=datetime.utcnow(),
+            )
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"[analyze] dual-write skipped during failure finalize: {type(e).__name__}: {e}")
 
 
 @router.get("/agent-sessions")
@@ -100,16 +217,17 @@ def analyze(
         f"[analyze] start patient_id={patient_id} mode={execution_mode} "
         f"poll_timeout={poll_sec}s wise_timeout={WISE_TIMEOUT_SEC}s"
     )
+    case_id = _create_case_and_input_message(db, patient_id, payload)
 
     try:
         # Run CBC first (fast, local)
-        cbc_result = run_cbc(payload, db, patient_id)
+        cbc_result = run_cbc(payload, db, patient_id, case_id=case_id)
 
         # Store CBC for EHRDataMinerAgent / mockehr to fetch as labs
         store_patient_cbc(patient_id, payload.model_dump())
 
         # Run WISE with timeout in a thread; use a fresh DB session (thread-safe)
-        wise_result = _run_wise_with_timeout(payload, patient_id, token, execution_mode=execution_mode)
+        wise_result = _run_wise_with_timeout(payload, patient_id, token, case_id=case_id, execution_mode=execution_mode)
         elapsed = round(time.monotonic() - req_start, 2)
         print(
             f"[analyze] complete patient_id={patient_id} mode={execution_mode} "
@@ -119,6 +237,7 @@ def analyze(
             cbc_result.get("recommendations") if isinstance(cbc_result, dict) else None,
             wise_result.get("recommendations") if isinstance(wise_result, dict) else None,
         )
+        _finalize_case_success(db, case_id, patient_id, cbc_result, wise_result, recommendations)
 
         # Tell clients (curl, gateways) to use at least this timeout so long S18 runs aren't aborted
         return JSONResponse(
@@ -131,6 +250,7 @@ def analyze(
             f"[analyze] error patient_id={patient_id} mode={execution_mode} "
             f"elapsed={elapsed}s error={type(e).__name__}: {e}"
         )
+        _finalize_case_failure(db, case_id, patient_id, str(e))
         tb = traceback.format_exc()
         raise HTTPException(
             status_code=500,
@@ -142,12 +262,32 @@ def analyze(
         )
 
 
-def _run_wise_with_timeout(payload, patient_id, access_token: str, execution_mode: str = "full") -> dict:
-    """Run WISE agent with timeout in a thread; use fresh DB session (thread-safe)."""
+def _run_wise_with_timeout(
+    payload,
+    patient_id,
+    access_token: str,
+    case_id: str | None = None,
+    execution_mode: str = "full",
+) -> dict:
+    """Run WISE agent with timeout in a thread; use fresh DB session (thread-safe).
+
+    On timeout the cancel_event is set so the background poll loop exits
+    promptly instead of continuing to poll S18 and hold a DB connection.
+    """
+    cancel_event = threading.Event()
+
     def _run():
         db = SessionLocal()
         try:
-            return run_wise_agent(payload, patient_id, db, access_token, execution_mode=execution_mode)
+            return run_wise_agent(
+                payload,
+                patient_id,
+                db,
+                access_token,
+                execution_mode=execution_mode,
+                case_id=case_id,
+                cancel_event=cancel_event,
+            )
         finally:
             db.close()
 
@@ -156,12 +296,14 @@ def _run_wise_with_timeout(payload, patient_id, access_token: str, execution_mod
         try:
             return future.result(timeout=WISE_TIMEOUT_SEC)
         except concurrent.futures.TimeoutError:
+            cancel_event.set()
             return {
                 "risk_level": "Unknown",
                 "confidence": 0.0,
                 "flags": ["wise_timeout", "S18 did not respond within timeout"],
             }
         except Exception as e:
+            cancel_event.set()
             return {
                 "risk_level": "Unknown",
                 "confidence": 0.0,
@@ -177,6 +319,7 @@ def _run_mh_wise_with_timeout(
     execution_mode: str = "full",
 ) -> dict:
     """Run mental health S18 pass with timeout in a thread; fresh DB session per call."""
+    cancel_event = threading.Event()
 
     def _run():
         db = SessionLocal()
@@ -188,6 +331,7 @@ def _run_mh_wise_with_timeout(
                 db,
                 access_token,
                 execution_mode=execution_mode,
+                cancel_event=cancel_event,
             )
         finally:
             db.close()
@@ -197,12 +341,14 @@ def _run_mh_wise_with_timeout(
         try:
             return future.result(timeout=WISE_TIMEOUT_SEC)
         except concurrent.futures.TimeoutError:
+            cancel_event.set()
             return {
                 "risk_level": "Unknown",
                 "confidence": 0.0,
                 "flags": ["mental_health_wise_timeout", "S18 did not respond within timeout"],
             }
         except Exception as e:
+            cancel_event.set()
             return {
                 "risk_level": "Unknown",
                 "confidence": 0.0,
