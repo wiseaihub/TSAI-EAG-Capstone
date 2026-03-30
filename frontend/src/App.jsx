@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, BrainCircuit, FlaskConical } from "lucide-react";
-import { AccountHeader, LoginPanel } from "./features/auth/auth-gate";
+import { AccountHeader, LoginPanel, PasswordRecoveryPanel } from "./features/auth/auth-gate";
 import { CbcWorkflow } from "./features/cbc/cbc-workflow";
 import { ModeSwitcher } from "./features/layout/mode-switcher";
 import { MentalHealthWorkflow } from "./features/mental-health/mh-workflow";
@@ -16,11 +16,26 @@ import {
 } from "./lib/api";
 import { supabase } from "./lib/supabase";
 
+const PASSWORD_RECOVERY_STORAGE_KEY = "wise_password_recovery";
+
+function readPasswordRecoveryFlag() {
+  try {
+    return typeof sessionStorage !== "undefined" && sessionStorage.getItem(PASSWORD_RECOVERY_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryConfirm, setRecoveryConfirm] = useState("");
+  const [passwordRecovery, setPasswordRecovery] = useState(readPasswordRecoveryFlag);
   const [authError, setAuthError] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
   const [mode, setMode] = useState("doctor");
   const [pollTimeoutSeconds, setPollTimeoutSeconds] = useState(900);
 
@@ -43,10 +58,41 @@ function App() {
   });
 
   useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, "");
+    const hashParams = new URLSearchParams(hash);
+    if (hashParams.get("type") === "recovery") {
+      try {
+        sessionStorage.setItem(PASSWORD_RECOVERY_STORAGE_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+      setPasswordRecovery(true);
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
+      if (!data.session) {
+        const h = window.location.hash.replace(/^#/, "");
+        const hasRecoveryHash = new URLSearchParams(h).get("type") === "recovery";
+        if (!hasRecoveryHash) {
+          try {
+            sessionStorage.removeItem(PASSWORD_RECOVERY_STORAGE_KEY);
+          } catch {
+            /* ignore */
+          }
+          setPasswordRecovery(false);
+        }
+      }
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === "PASSWORD_RECOVERY") {
+        try {
+          sessionStorage.setItem(PASSWORD_RECOVERY_STORAGE_KEY, "1");
+        } catch {
+          /* ignore */
+        }
+        setPasswordRecovery(true);
+      }
       setSession(nextSession);
     });
     return () => {
@@ -78,6 +124,7 @@ function App() {
 
   async function login() {
     setAuthError("");
+    setInfoMessage("");
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -87,7 +134,83 @@ function App() {
     }
   }
 
+  async function signUp() {
+    setAuthError("");
+    setInfoMessage("");
+    if (password !== confirmPassword) {
+      setAuthError("Passwords do not match.");
+      return;
+    }
+    if (password.length < 6) {
+      setAuthError("Password must be at least 6 characters.");
+      return;
+    }
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/`,
+      },
+    });
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+    if (data.user && !data.session) {
+      setInfoMessage("Check your inbox to confirm your email before signing in.");
+    }
+  }
+
+  async function forgotPassword() {
+    setAuthError("");
+    setInfoMessage("");
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setAuthError("Enter your email address.");
+      return;
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+      redirectTo: `${window.location.origin}/`,
+    });
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+    setInfoMessage("If an account exists for that email, you will receive a reset link shortly.");
+  }
+
+  async function completePasswordRecovery() {
+    setAuthError("");
+    if (recoveryPassword !== recoveryConfirm) {
+      setAuthError("Passwords do not match.");
+      return;
+    }
+    if (recoveryPassword.length < 6) {
+      setAuthError("Password must be at least 6 characters.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: recoveryPassword });
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+    try {
+      sessionStorage.removeItem(PASSWORD_RECOVERY_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    setPasswordRecovery(false);
+    setRecoveryPassword("");
+    setRecoveryConfirm("");
+  }
+
   async function logout() {
+    try {
+      sessionStorage.removeItem(PASSWORD_RECOVERY_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    setPasswordRecovery(false);
     await supabase.auth.signOut();
     setCbcState({ loading: false, result: null, error: "", hint: "" });
     setMhState({ loading: false, result: null, error: "", hint: "" });
@@ -200,16 +323,40 @@ function App() {
     }
   }
 
+  if (passwordRecovery) {
+    return (
+      <main className="mx-auto max-w-7xl px-5 pb-16 pt-10 md:px-8">
+        <PasswordRecoveryPanel
+          newPassword={recoveryPassword}
+          confirmPassword={recoveryConfirm}
+          authError={authError}
+          onNewPasswordChange={setRecoveryPassword}
+          onConfirmPasswordChange={setRecoveryConfirm}
+          onSubmit={completePasswordRecovery}
+        />
+      </main>
+    );
+  }
+
   if (!session) {
     return (
       <main className="mx-auto max-w-7xl px-5 pb-16 pt-10 md:px-8">
         <LoginPanel
           email={email}
           password={password}
+          confirmPassword={confirmPassword}
           authError={authError}
+          infoMessage={infoMessage}
           onEmailChange={setEmail}
           onPasswordChange={setPassword}
+          onConfirmPasswordChange={setConfirmPassword}
           onLogin={login}
+          onSignUp={signUp}
+          onForgotPassword={forgotPassword}
+          onClearMessages={() => {
+            setAuthError("");
+            setInfoMessage("");
+          }}
         />
       </main>
     );
