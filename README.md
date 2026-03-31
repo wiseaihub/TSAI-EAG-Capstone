@@ -22,6 +22,28 @@ It is designed to work strictly based on user-consent only, assisting both **pat
 > ⚠️ This system provides **decision support, not medical automation**.  
 > All clinical decisions remain with licensed practitioners.
 
+### About this README: initial vision vs current version
+
+The **original capstone repository layout** described in early TSAI materials (e.g. `plugin/`, `cdss-app/`, `demo/`, `paper/`) reflects the **initial product vision** and roadmap.
+
+**This README** documents the **current version** of the repository: a **FastAPI** backend (`backend/`), a **Vite + React** web app (`frontend/`), Docker deployment under `deployment/docker/`, and the flows implemented today—including CBC and mental health workflows, Mock EHR APIs, optional **S18** narrative support via long‑polling integration, and **Supabase**‑backed sign‑in for the WISE Clinical Portal.
+
+---
+
+## Current UI (WISE Clinical Portal)
+
+The screenshots below show the **current** web experience: secure sign‑in, then the signed‑in **WISE Clinical Intelligence Portal** with Doctor/Patient workflow modes, operational profile (including S18 long‑polling and backend poll timeout messaging), and CBC workflow panels.
+
+**Sign in — WISE Clinical Portal** (CBC and Mental Health workflows; Sign in / Create account / Forgot password)
+
+![WISE Clinical Portal sign-in](docs/images/clinical-portal-sign-in.png)
+
+**Signed in — WISE Clinical Intelligence Portal** (unified CBC and Mental Health workflows; optional S18 narrative support; Doctor vs Patient view)
+
+![WISE Clinical Intelligence Portal](docs/images/clinical-intelligence-portal.png)
+
+---
+
 ## 🎯 Vision
 
 To build a **responsible, explainable, agentic healthcare assistant**
@@ -65,51 +87,16 @@ Primary demo audience: **Rohan Shravan (TSAI)**
 
 ## 🧩 Core System Components
 
-### 1️⃣ WISE AI Plugin
-- Browser‑based, user‑triggered
-- Consent‑based data extraction from EHR views
-- Research & signal capture
-- Feeds the shared knowledge bank
+These items reflect the **conceptual** architecture; the **current** codebase maps to `backend/` (API, Mock EHR, orchestration), `frontend/` (WISE Clinical Portal), and optional integration with **S18** for extended narrative workflows.
 
-### 2️⃣ WISE AI CDSS Web App
-- Standalone web application
-- Rich UI for:
-  - Recommendations & guidance
-  - Clinical summaries
-  - Confidence scores
-  - Missing‑signal feedback
-- Hosts the **agentic reasoning loop**
+1. **WISE AI Plugin (vision / roadmap)**  
+   Browser‑based, user‑triggered, consent‑based extraction from EHR views; research and signal capture feeding a shared knowledge bank (not present as a separate top‑level package in the current tree).
 
-### 3️⃣ Shared Knowledge Bank
-- World‑wide research sources (RAG)
-- Platform‑level anonymised context
-- Doctor & patient workspaces (conceptual)
-- Supports feedback loops
+2. **WISE AI CDSS Web App (current: `frontend/`)**  
+   Standalone web UI for recommendations, clinical summaries, confidence scores, missing‑signal feedback, and orchestration of the agentic reasoning loop. Future or simulated actions are labelled accordingly.
 
----
-
-### 1. **WISE AI Plugin**
-- User‑triggered (no background scraping)
-- Consent‑based data extraction from EHR screens
-- Research adapter (WWW + curated sources)
-- Pushes structured signals into the shared knowledge bank
-
-### 2. **WISE AI CDSS Web App**
-- Standalone, rich UI (opened in a separate tab)
-- Orchestrates multiple reasoning agents
-- Displays:
-  - Clinical summaries
-  - Diagnostic guidance
-  - Treatment considerations
-  - Confidence scores & missing signals
-- Clearly labels **“future / simulated” actions**
-
-### 3. **Shared Knowledge Bank**
-- Stores:
-  - Patient‑context (session‑scoped)
-  - Doctor workspace knowledge
-  - Anonymised platform knowledge
-- Enables feedback loops and iterative reasoning
+3. **Shared Knowledge Bank**  
+   Research and RAG‑style context (platform‑level anonymised context, doctor and patient workspaces as concepts); supports feedback loops and iterative reasoning.
 
 ---
 
@@ -127,8 +114,8 @@ All outputs are synthesized, scored for confidence, and presented for **human ap
 
 > 📌 **No agent directly writes to the EHR in MVP** — all actions are advisory.
 
-📐 **Architecture diagram (Mermaid source & rendered image)**  
-See: `docs/architecture.md`
+📐 **Architecture diagrams**  
+See under `docs/architecture/` (for example [`docs/architecture/WISE_AI_CDSS_Architecture.md`](docs/architecture/WISE_AI_CDSS_Architecture.md)).
 
 ---
 
@@ -158,15 +145,17 @@ See: `docs/architecture.md`
 
 ---
 
-🛠️ Technology Posture (Indicative)
-- Frontend: Web UI (framework‑agnostic)
-- AI Layer: LLM‑driven agent orchestration
-- Local Dev: Cursor IDE, Ollama (multi‑LLM switching)
-- Demo LLM: Gemini (mentor‑preferred)
-- Hosting (stretch): AWS (credits‑based)
-  
----
+🛠️ Technology Posture (current codebase)
 
+- **Frontend:** React + Vite (`frontend/`), Tailwind‑style UI for WISE Clinical Portal
+- **Backend:** FastAPI (`backend/`), Mock EHR and CBC/orchestrator routes
+- **AI layer:** LLM‑driven agent orchestration (configurable)
+- **Local dev:** Cursor IDE; optional Ollama for local models
+- **Demo LLM:** Gemini (mentor‑preferred)
+- **Auth:** Supabase (frontend); see frontend env and `deployment/docker` for compose variables
+- **Hosting (stretch):** AWS (credits‑based)
+
+---
 
 ## 🗓 Project Constraints
 
@@ -194,41 +183,84 @@ See: `docs/architecture.md`
 
 ---
 
-## 📁 Repository Structure
+## 📁 Repository structure
+
+### Initial vision (reference)
+
+Early capstone write‑ups described a layout similar to:
 
 ```text
 /
 ├── docs/
-│   ├── architecture.md        # Mermaid + rendered architecture diagrams
-│   ├── north-star.md          # Vision, principles, MVP feature freeze
-│
-├── plugin/                    # WISE AI browser plugin (data capture & research)
-│
-├── cdss-app/                  # WISE AI CDSS web application (UI + agents)
-│
+├── plugin/                    # Browser plugin (data capture & research)
+├── cdss-app/                  # CDSS web app (UI + agents)
 ├── demo/
-│   ├── scripts/               # Demo narration & walkthroughs
-│   ├── screenshots/
-│   └── videos/
-│
-├── paper/                     # Capstone paper (outline & drafts)
-│
+├── paper/
 ├── .github/
-│   └── workflows/
-│       └── capstone.yml       # Basic CI / automation
-│
+└── README.md
+```
+
+That structure reflects **roadmap and narrative**; the **current** repository layout below is what this project uses day‑to‑day.
+
+### Current repository layout
+
+```text
+/
+├── backend/                   # FastAPI app (Mock EHR, CBC, orchestrator)
+├── frontend/                  # Vite + React — WISE Clinical Portal
+├── deployment/
+│   └── docker/                # docker-compose, GHCR, full stack with S18 (see README there)
+├── docs/                      # Architecture, API notes, README images
+│   └── images/                # Screenshots for this README
+├── tests/                     # Backend tests
+├── data/
+├── .github/
+│   └── workflows/             # capstone.yml, backend-ci.yml, docker-publish.yml
 └── README.md
 ```
 
 ---
-## ⚙️ CI / Automation
 
-Basic GitHub Actions workflow is defined in:
+## Local development
 
-.github/workflows/capstone.yml
+**Backend** (from `backend/`):
+
+```bash
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+**Frontend** (from `frontend/`):
+
+```bash
+npm install
+npm run dev
+```
+
+Dev server uses port **5173** by default (`vite.config.js`). Configure API and Supabase env vars as needed for your environment (see `frontend` and root `.env` patterns used in Docker builds).
 
 ---
+
+## Docker (optional)
+
+For building and running with Docker—local compose, images from GHCR, or **full stack** with S18Share—see **[`deployment/docker/README.md`](deployment/docker/README.md)**.
+
+---
+
+## ⚙️ CI / Automation
+
+Workflows live under `.github/workflows/`, including:
+
+- `capstone.yml` — basic repository checks  
+- `backend-ci.yml` — backend CI  
+- `docker-publish.yml` — container image publishing  
+
+---
+
 ## ⚠️ Disclaimer
+
 WISE AI is a **clinical decision‑support system**.
 
 It does **not** diagnose, prescribe, or replace licensed medical professionals.  
