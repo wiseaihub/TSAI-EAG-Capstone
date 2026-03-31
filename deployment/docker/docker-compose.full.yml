@@ -1,0 +1,94 @@
+# Full stack: wise-ai backend + frontend + S18Share (EHR Data Miner integration).
+# Run from this directory: docker compose -f docker-compose.full.yml up -d
+#
+# Prerequisite: S18Share must be a sibling of wise-ai (e.g. ../S18Share/S18Share).
+# Override S18_PATH if your layout differs: S18_PATH=/path/to/S18Share docker compose -f docker-compose.full.yml up -d
+
+services:
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: wise-ai-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../../.env
+    environment:
+      - S18_BASE_URL=http://s18share-api:8000
+      # Must match long S18 full-graph runs (often >5 min); keep WISE_TIMEOUT_SEC > poll window.
+      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
+      - S18_POLL_TIMEOUT_SEC=${S18_POLL_TIMEOUT_SEC:-900}
+      - S18_POLL_INTERVAL_SEC=${S18_POLL_INTERVAL_SEC:-2.0}
+      - WISE_TIMEOUT_SEC=${WISE_TIMEOUT_SEC:-1200}
+      - DEBUG_LOG_PATH=/workspace/debug-f905fa.log
+    volumes:
+      - ../../:/workspace
+    networks:
+      - wise_net
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL in deployment/docker/.env}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY in deployment/docker/.env}
+    container_name: wise-ai-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - wise_net
+
+  s18share-api:
+    build:
+      context: ${S18_PATH:-../../../S18Share/S18Share}
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: s18share-api
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AUTH_ENABLED=${S18_AUTH_ENABLED:-false}
+      - OLLAMA_BASE_URL=http://s18share-ollama:11434
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-300}
+      # Align advertised /runs poll hint with wise-ai client (optional; wise-ai uses its own poll loop).
+      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
+      - WISE_MOCKEHR_BASE_URL=http://backend:8000
+      - DEBUG_LOG_PATH=${DEBUG_LOG_PATH:-/app/data/debug-f905fa.log}
+    volumes:
+      - ${S18_PATH:-../../../S18Share/S18Share}/data:/app/data
+      - ${S18_PATH:-../../../S18Share/S18Share}/memory:/app/memory
+      - ${S18_PATH:-../../../S18Share/S18Share}/config:/app/config
+      - ${S18_PATH:-../../../S18Share/S18Share}/mcp_servers/faiss_index:/app/mcp_servers/faiss_index
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - s18share-ollama
+      - backend
+    networks:
+      - wise_net
+
+  s18share-ollama:
+    image: ollama/ollama:latest
+    container_name: s18share-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - wise_net
+
+volumes:
+  ollama_data:
+    # Same name as standalone S18Share so models persist when switching between merged/separate runs
+    name: s18share_ollama_data
+
+networks:
+  wise_net:
+    driver: bridge
