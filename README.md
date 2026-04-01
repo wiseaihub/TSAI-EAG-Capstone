@@ -262,6 +262,12 @@ Set a provisioning secret in backend env:
 DOCTOR_PROVISION_SECRET=change_me_long_random_value
 ```
 
+Generate a strong value:
+
+```bash
+python backend/scripts/generate_doctor_secret.py
+```
+
 Promote a user to doctor (replace values):
 
 ```bash

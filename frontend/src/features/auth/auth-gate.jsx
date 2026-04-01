@@ -111,7 +111,7 @@ export function LoginPanel({
         {mode === "register" ? (
           <Button onClick={onSignUp} className="w-full gap-2">
             <UserPlus className="h-4 w-4" />
-            Create account
+            Create patient account
           </Button>
         ) : null}
         {mode === "forgot" ? (

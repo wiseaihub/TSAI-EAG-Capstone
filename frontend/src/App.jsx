@@ -184,7 +184,9 @@ function App() {
       return;
     }
     if (data.user && !data.session) {
-      setInfoMessage("Check your inbox to confirm your patient account before signing in.");
+      setInfoMessage(
+        "If this email can receive confirmation, check your inbox and spam folder before signing in."
+      );
     }
   }
 
@@ -272,6 +274,15 @@ function App() {
       });
       return;
     }
+    if (userProfile?.app_role !== "doctor") {
+      setCbcState({
+        loading: false,
+        result: null,
+        error: "Doctor role required for CBC analysis.",
+        hint: "You can view workflows, but only doctor accounts can run clinical analysis.",
+      });
+      return;
+    }
 
     setCbcState({ loading: true, result: null, error: "", hint: "" });
     try {
@@ -316,6 +327,15 @@ function App() {
         result: null,
         error: "Please sign in before running mental health screening.",
         hint: "",
+      });
+      return;
+    }
+    if (userProfile?.app_role !== "doctor") {
+      setMhState({
+        loading: false,
+        result: null,
+        error: "Doctor role required for mental health screening.",
+        hint: "You can view workflows, but only doctor accounts can run clinical analysis.",
       });
       return;
     }
@@ -426,27 +446,6 @@ function App() {
     );
   }
 
-  if (userProfile.app_role === "patient") {
-    return (
-      <main className="mx-auto max-w-7xl px-5 pb-16 pt-10 md:px-8">
-        <AccountHeader session={session} onLogout={logout} />
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-lg">Patient account</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Doctor-only workflows are not available for patient accounts.
-            </p>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              If you need clinician access, contact your administrator to provision a doctor role.
-            </p>
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
-
   return (
     <main className="mx-auto max-w-7xl space-y-8 px-5 pb-16 pt-10 md:px-8">
       <header className="space-y-5">
@@ -462,7 +461,9 @@ function App() {
             <CardTitle className="text-base md:text-lg">Account Role</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm font-medium">Signed in role: Doctor</p>
+            <p className="text-sm font-medium">
+              Signed in role: {userProfile?.app_role === "doctor" ? "Doctor" : "Patient"}
+            </p>
             <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">{roleCopy}</p>
           </CardContent>
         </Card>
@@ -475,6 +476,14 @@ function App() {
           S18-enabled runs are long polling workflows. Current backend poll timeout is {pollTimeoutSeconds} seconds.
         </AlertDescription>
       </Alert>
+      {userProfile?.app_role === "patient" ? (
+        <Alert variant="warning">
+          <AlertTitle>Patient access mode</AlertTitle>
+          <AlertDescription>
+            Workflow cards are visible for review. Running CBC and mental health analysis requires a doctor account.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <section className="grid gap-7 xl:grid-cols-[2fr,1fr]">
         <div className="space-y-7">
@@ -484,7 +493,7 @@ function App() {
               CBC
             </div>
             <CbcWorkflow
-              mode="doctor"
+              mode={userProfile?.app_role === "doctor" ? "doctor" : "patient"}
               pollTimeoutSeconds={pollTimeoutSeconds}
               state={cbcState}
               onAnalyze={runCbc}
@@ -497,7 +506,7 @@ function App() {
               Mental Health
             </div>
             <MentalHealthWorkflow
-              mode="doctor"
+              mode={userProfile?.app_role === "doctor" ? "doctor" : "patient"}
               pollTimeoutSeconds={pollTimeoutSeconds}
               state={mhState}
               onAnalyze={runMentalHealth}
