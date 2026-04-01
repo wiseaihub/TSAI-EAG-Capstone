@@ -33,6 +33,7 @@ def _load_run_poll_timeout_from_settings_json() -> int | None:
 
 class Settings:
     DATABASE_URL: str | None = os.getenv("DATABASE_URL")
+    doctor_provision_secret: str | None = os.getenv("DOCTOR_PROVISION_SECRET")
 
     # Total wait timeout for polling S18 GET /runs/{id}. Exposed via GET /health so clients/gateways can set their timeout.
     # Priority: env RUN_POLL_TIMEOUT_SECONDS > settings.json run_poll_timeout_seconds > env S18_POLL_TIMEOUT_SEC (backward compat) > default 900.

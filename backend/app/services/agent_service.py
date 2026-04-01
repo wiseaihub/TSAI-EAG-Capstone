@@ -6,6 +6,61 @@ from app.db.models import AgentRun, AgentSession, RunArtifact
 
 _cbc_agent = CBCAgent()
 
+_SEX_DISPLAY = {
+    "male": "Male",
+    "female": "Female",
+    "third_gender": "Third gender",
+}
+
+
+def _format_sex_for_display(raw: str) -> str:
+    key = raw.strip().lower()
+    if key in _SEX_DISPLAY:
+        return _SEX_DISPLAY[key]
+    return raw.strip().replace("_", " ").title()
+
+
+def _cbc_display_labels(payload) -> list[str]:
+    """Human-readable echo of submitted labs (parity with mental health display_labels)."""
+    out: list[str] = []
+    sex = getattr(payload, "sex", None)
+    if sex is not None and str(sex).strip():
+        out.append(f"Sex for interpretation: {_format_sex_for_display(str(sex))}")
+
+    hb = getattr(payload, "hemoglobin", None)
+    if hb is not None:
+        hb_s = f"{hb:g}" if isinstance(hb, (int, float)) else str(hb)
+        out.append(f"Hemoglobin: {hb_s} g/dL")
+
+    wbc = getattr(payload, "wbc", None)
+    if wbc is not None:
+        wbc_s = f"{wbc:g}" if isinstance(wbc, (int, float)) else str(wbc)
+        out.append(f"WBC: {wbc_s} per µL")
+
+    rbc = getattr(payload, "rbc", None)
+    if rbc is not None:
+        rbc_s = f"{rbc:g}" if isinstance(rbc, (int, float)) else str(rbc)
+        out.append(f"RBC: {rbc_s} million/µL")
+
+    plt = getattr(payload, "platelets", None)
+    if plt is not None:
+        p_s = f"{plt:g}" if isinstance(plt, (int, float)) else str(plt)
+        out.append(f"Platelets: {p_s} per µL")
+
+    return out
+
+
+def _cbc_input_echo(payload) -> dict:
+    """Structured copy of submitted CBC fields for API consumers (mirrors MH phq9_total / gad7_total)."""
+    sex = getattr(payload, "sex", None)
+    return {
+        "sex": str(sex).strip() if sex is not None and str(sex).strip() else None,
+        "hemoglobin": getattr(payload, "hemoglobin", None),
+        "wbc": getattr(payload, "wbc", None),
+        "rbc": getattr(payload, "rbc", None),
+        "platelets": getattr(payload, "platelets", None),
+    }
+
 
 def _cbc_recommendations(payload, flags: list[str]) -> list[str]:
     recs: list[str] = []
@@ -38,6 +93,8 @@ def run_cbc(payload, db, patient_id, case_id: str | None = None):
     """
     analysis = _cbc_agent.analyze(payload)
     recommendations = _cbc_recommendations(payload, analysis["flags"])
+    display_labels = _cbc_display_labels(payload)
+    input_echo = _cbc_input_echo(payload)
 
     record = AgentSession(
         session_id=analysis["session_id"],
@@ -59,6 +116,8 @@ def run_cbc(payload, db, patient_id, case_id: str | None = None):
             "confidence": analysis["confidence"],
             "flags": analysis["flags"],
             "recommendations": recommendations,
+            "display_labels": display_labels,
+            "input_echo": input_echo,
         }
         db.add(
             AgentRun(
@@ -95,4 +154,6 @@ def run_cbc(payload, db, patient_id, case_id: str | None = None):
         "confidence": analysis["confidence"],
         "flags": analysis["flags"],
         "recommendations": recommendations,
+        "display_labels": display_labels,
+        **input_echo,
     }

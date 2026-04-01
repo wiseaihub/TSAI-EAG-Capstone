@@ -34,13 +34,13 @@ export function LoginPanel({
       <CardHeader>
         <CardTitle className="text-2xl tracking-tight">WISE Clinical Portal</CardTitle>
         <CardDescription className="leading-relaxed">
-          Secure sign-in for CBC and Mental Health workflows.
+          Shared sign-in for patient and doctor accounts. Doctor access is provisioned separately.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-1">
           {AUTH_MODES.map((m) => {
-            const labels = { signin: "Sign in", register: "Create account", forgot: "Forgot password" };
+            const labels = { signin: "Sign in", register: "Create patient account", forgot: "Forgot password" };
             const active = mode === m;
             return (
               <button
