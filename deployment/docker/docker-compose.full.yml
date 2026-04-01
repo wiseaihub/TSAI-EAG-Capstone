@@ -34,6 +34,7 @@ services:
       args:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL in deployment/docker/.env}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY in deployment/docker/.env}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
     container_name: wise-ai-frontend
     ports:
       - "3000:80"

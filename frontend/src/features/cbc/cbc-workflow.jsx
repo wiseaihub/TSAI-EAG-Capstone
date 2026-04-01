@@ -74,6 +74,7 @@ export function CbcWorkflow({ mode, pollTimeoutSeconds, state, onAnalyze }) {
               <option value="">Unknown / not provided</option>
               <option value="female">Female</option>
               <option value="male">Male</option>
+              <option value="third_gender">Third gender</option>
             </select>
           </div>
           <div className="space-y-2">
@@ -129,6 +130,13 @@ export function CbcWorkflow({ mode, pollTimeoutSeconds, state, onAnalyze }) {
           <div className="grid gap-4 lg:grid-cols-2">
             <RiskSummaryCard title="CBC Local Engine" summary={state.result.cbc} />
             <RiskSummaryCard title="WISE Narrative Engine" summary={state.result.wise} />
+            <div className="lg:col-span-2">
+              <FlagListCard
+                title="Submitted labs"
+                flags={state.result.cbc?.display_labels}
+                emptyLabel="No submitted lab values returned."
+              />
+            </div>
             <FlagListCard title="CBC flags" flags={state.result.cbc?.flags} />
             <FlagListCard title="WISE flags" flags={state.result.wise?.flags} />
             <RecommendationsCard recommendations={state.result.recommendations} />

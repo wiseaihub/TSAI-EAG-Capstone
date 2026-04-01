@@ -23,6 +23,15 @@ class Patient(Base):
     updated_at = Column(DateTime, nullable=False)
 
 
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+
+    user_id = Column(String, primary_key=True)
+    role = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
 class Encounter(Base):
     __tablename__ = "encounters"
 

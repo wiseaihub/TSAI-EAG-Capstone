@@ -18,7 +18,7 @@ def mh_client():
     app.include_router(orch.router)
 
     def _user():
-        return {"sub": "test-mh-patient"}
+        return {"sub": "test-mh-doctor", "app_role": "doctor"}
 
     def _db():
         yield MagicMock()

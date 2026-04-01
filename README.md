@@ -249,6 +249,43 @@ For building and running with Docker—local compose, images from GHCR, or **ful
 
 ---
 
+## Doctor Provisioning (RBAC)
+
+The portal now enforces app roles:
+
+- `doctor`: can access CBC and mental-health clinical workflows
+- `patient`: cannot access doctor-only workflows
+
+Set a provisioning secret in backend env:
+
+```bash
+DOCTOR_PROVISION_SECRET=change_me_long_random_value
+```
+
+Generate a strong value:
+
+```bash
+python backend/scripts/generate_doctor_secret.py
+```
+
+Promote a user to doctor (replace values):
+
+```bash
+curl -X POST "http://localhost:8000/auth/provision-doctor" \
+  -H "Content-Type: application/json" \
+  -H "X-Provision-Secret: change_me_long_random_value" \
+  -d '{"user_id":"<supabase_user_id>"}'
+```
+
+Check current role for a signed-in token:
+
+```bash
+curl "http://localhost:8000/auth/me" \
+  -H "Authorization: Bearer <access_token>"
+```
+
+---
+
 ## ⚙️ CI / Automation
 
 Workflows live under `.github/workflows/`, including:

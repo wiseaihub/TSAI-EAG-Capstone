@@ -23,7 +23,7 @@ from app.services.mental_health_service import (
 )
 from app.agents.wise_adapter import run_mental_health_wise, run_wise_agent
 from app.core.config import settings
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_doctor
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 router = APIRouter()
@@ -56,7 +56,7 @@ def _dedupe_recommendations(*groups: object) -> list[str]:
 
 @router.get("/agent-sessions")
 def list_agent_sessions(
-    user=Depends(get_current_user),
+    user=Depends(require_doctor),
     db: Session = Depends(get_db),
     limit: int = 20,
 ):
@@ -85,7 +85,7 @@ def list_agent_sessions(
 @router.post("/analyze")
 def analyze(
     payload: CBCInput,
-    user=Depends(get_current_user),
+    user=Depends(require_doctor),
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
     fast: bool = False,
@@ -252,7 +252,7 @@ def _run_mh_wise_with_timeout(
 @router.post("/mental-health/analyze")
 def mental_health_analyze(
     payload: MentalHealthInput,
-    user=Depends(get_current_user),
+    user=Depends(require_doctor),
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ):
