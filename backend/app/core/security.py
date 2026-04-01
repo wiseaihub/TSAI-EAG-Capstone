@@ -1,10 +1,15 @@
-from jose import jwt
-from fastapi import Depends, HTTPException
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import requests
 import os
+import requests
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import jwt
+from sqlalchemy.orm import Session
+
+from app.db.models import UserProfile
+from app.db.session import get_db
 
 security = HTTPBearer()
+APP_ROLES = {"doctor", "patient"}
 
 _jwks_cache: dict | None = None
 
@@ -38,6 +43,7 @@ def get_public_key(token):
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
 ):
     token = credentials.credentials
 
@@ -51,7 +57,46 @@ def get_current_user(
             audience="authenticated",
         )
 
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token: missing subject")
+        app_role = _resolve_or_create_user_role(db, str(user_id))
+        payload["app_role"] = app_role
         return payload
 
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def _resolve_or_create_user_role(db: Session, user_id: str) -> str:
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if profile is None:
+        try:
+            profile = UserProfile(user_id=user_id, role="patient")
+            db.add(profile)
+            db.commit()
+            return "patient"
+        except Exception:
+            # Handle concurrent first-login upserts by retrying a lookup.
+            db.rollback()
+            profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+            if profile is None:
+                raise
+    role = str(profile.role or "").strip().lower()
+    if role not in APP_ROLES:
+        raise HTTPException(status_code=403, detail="User role is not provisioned")
+    return role
+
+
+def require_doctor(user=Depends(get_current_user)):
+    if user.get("app_role") != "doctor":
+        raise HTTPException(status_code=403, detail="Doctor access required")
+    return user
+
+
+def require_patient_or_doctor(user=Depends(get_current_user)):
+    if user.get("app_role") not in APP_ROLES:
+        raise HTTPException(status_code=403, detail="Provisioned role required")
+    return user

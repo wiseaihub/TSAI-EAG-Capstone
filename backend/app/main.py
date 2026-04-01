@@ -5,6 +5,7 @@ from app.api.health import router as health_router
 from app.api.cbc import router as cbc_router
 from app.api.orchestrator import router as orchestrator_router
 from app.api.mock_ehr import router as mock_ehr_router
+from app.api.auth import router as auth_router
 
 app = FastAPI(title="WISE AI")
 
@@ -36,6 +37,7 @@ def root():
 
 # Routers
 app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(cbc_router, prefix="/cbc")
 app.include_router(orchestrator_router)
 app.include_router(mock_ehr_router)

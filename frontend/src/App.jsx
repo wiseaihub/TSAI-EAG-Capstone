@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Activity, BrainCircuit, FlaskConical } from "lucide-react";
 import { AccountHeader, LoginPanel, PasswordRecoveryPanel } from "./features/auth/auth-gate";
 import { CbcWorkflow } from "./features/cbc/cbc-workflow";
-import { ModeSwitcher } from "./features/layout/mode-switcher";
 import { MentalHealthWorkflow } from "./features/mental-health/mh-workflow";
 import { SessionTimeline } from "./features/sessions/session-timeline";
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
@@ -11,6 +10,7 @@ import { Separator } from "./components/ui/separator";
 import {
   analyzeCbc,
   analyzeMh,
+  fetchCurrentUser,
   fetchHealthConfig,
   fetchRecentAgentSessions,
 } from "./lib/api";
@@ -36,7 +36,9 @@ function App() {
   const [passwordRecovery, setPasswordRecovery] = useState(readPasswordRecoveryFlag);
   const [authError, setAuthError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
-  const [mode, setMode] = useState("doctor");
+  const [userProfile, setUserProfile] = useState(null);
+  const [roleLoading, setRoleLoading] = useState(false);
+  const [roleError, setRoleError] = useState("");
   const [pollTimeoutSeconds, setPollTimeoutSeconds] = useState(900);
 
   const [cbcState, setCbcState] = useState({
@@ -111,16 +113,41 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!session?.access_token) return;
-    refreshSessions(session.access_token);
+    if (!session?.access_token) {
+      setUserProfile(null);
+      setRoleError("");
+      return;
+    }
+    setRoleLoading(true);
+    setRoleError("");
+    fetchCurrentUser(session.access_token)
+      .then((profile) => {
+        setUserProfile(profile || null);
+      })
+      .catch((error) => {
+        setUserProfile(null);
+        setRoleError(error?.message || "Failed to resolve account role.");
+      })
+      .finally(() => {
+        setRoleLoading(false);
+      });
   }, [session?.access_token]);
 
-  const modeCopy = useMemo(() => {
-    if (mode === "doctor") {
-      return "Doctor view emphasizes concise risk summaries and decision-support details.";
+  useEffect(() => {
+    if (!session?.access_token) return;
+    if (userProfile?.app_role !== "doctor") return;
+    refreshSessions(session.access_token);
+  }, [session?.access_token, userProfile?.app_role]);
+
+  const roleCopy = useMemo(() => {
+    if (userProfile?.app_role === "doctor") {
+      return "Doctor access is enabled for clinical workflows and decision-support tools.";
     }
-    return "Patient view uses guided language and stronger context around safety and escalation.";
-  }, [mode]);
+    if (userProfile?.app_role === "patient") {
+      return "Patient account detected. Clinical doctor workflows are restricted.";
+    }
+    return "Account role could not be determined.";
+  }, [userProfile?.app_role]);
 
   async function login() {
     setAuthError("");
@@ -157,7 +184,7 @@ function App() {
       return;
     }
     if (data.user && !data.session) {
-      setInfoMessage("Check your inbox to confirm your email before signing in.");
+      setInfoMessage("Check your inbox to confirm your patient account before signing in.");
     }
   }
 
@@ -212,6 +239,9 @@ function App() {
     }
     setPasswordRecovery(false);
     await supabase.auth.signOut();
+    setUserProfile(null);
+    setRoleLoading(false);
+    setRoleError("");
     setCbcState({ loading: false, result: null, error: "", hint: "" });
     setMhState({ loading: false, result: null, error: "", hint: "" });
     setSessionsState({ loading: false, sessions: [], error: "" });
@@ -257,11 +287,12 @@ function App() {
       if (response.ok) {
         setCbcState({ loading: false, result: response.data, error: "", hint: "" });
       } else {
+        const forbidden = response.data?.status === 403;
         setCbcState({
           loading: false,
           result: null,
-          error: String(response.data?.error || "Request failed"),
-          hint: "Review backend logs if this persists.",
+          error: forbidden ? "Doctor role required for CBC analysis." : String(response.data?.error || "Request failed"),
+          hint: forbidden ? "Use a provisioned doctor account to access this workflow." : "Review backend logs if this persists.",
         });
       }
       refreshSessions(session.access_token);
@@ -302,11 +333,16 @@ function App() {
       if (response.ok) {
         setMhState({ loading: false, result: response.data, error: "", hint: "" });
       } else {
+        const forbidden = response.data?.status === 403;
         setMhState({
           loading: false,
           result: null,
-          error: String(response.data?.error || "Request failed"),
-          hint: "Validate PHQ-9/GAD-7 inputs and retry.",
+          error: forbidden
+            ? "Doctor role required for mental health screening."
+            : String(response.data?.error || "Request failed"),
+          hint: forbidden
+            ? "Use a provisioned doctor account to access this workflow."
+            : "Validate PHQ-9/GAD-7 inputs and retry.",
         });
       }
       refreshSessions(session.access_token);
@@ -362,6 +398,55 @@ function App() {
     );
   }
 
+  if (roleLoading) {
+    return (
+      <main className="mx-auto max-w-7xl px-5 pb-16 pt-10 md:px-8">
+        <AccountHeader session={session} onLogout={logout} />
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-lg">Loading account access</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-[var(--muted-foreground)]">Verifying your role and access policy...</p>
+          </CardContent>
+        </Card>
+      </main>
+    );
+  }
+
+  if (roleError || !userProfile?.app_role) {
+    return (
+      <main className="mx-auto max-w-7xl px-5 pb-16 pt-10 md:px-8">
+        <AccountHeader session={session} onLogout={logout} />
+        <Alert variant="destructive" className="mt-6">
+          <AlertTitle>Access setup required</AlertTitle>
+          <AlertDescription>{roleError || "Your account role is not provisioned yet."}</AlertDescription>
+        </Alert>
+      </main>
+    );
+  }
+
+  if (userProfile.app_role === "patient") {
+    return (
+      <main className="mx-auto max-w-7xl px-5 pb-16 pt-10 md:px-8">
+        <AccountHeader session={session} onLogout={logout} />
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-lg">Patient account</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Doctor-only workflows are not available for patient accounts.
+            </p>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              If you need clinician access, contact your administrator to provision a doctor role.
+            </p>
+          </CardContent>
+        </Card>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-7xl space-y-8 px-5 pb-16 pt-10 md:px-8">
       <header className="space-y-5">
@@ -374,11 +459,11 @@ function App() {
         <AccountHeader session={session} onLogout={logout} />
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base md:text-lg">Workflow Mode</CardTitle>
+            <CardTitle className="text-base md:text-lg">Account Role</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <ModeSwitcher mode={mode} onModeChange={setMode} />
-            <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">{modeCopy}</p>
+            <p className="text-sm font-medium">Signed in role: Doctor</p>
+            <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">{roleCopy}</p>
           </CardContent>
         </Card>
       </header>
@@ -399,7 +484,7 @@ function App() {
               CBC
             </div>
             <CbcWorkflow
-              mode={mode}
+              mode="doctor"
               pollTimeoutSeconds={pollTimeoutSeconds}
               state={cbcState}
               onAnalyze={runCbc}
@@ -412,7 +497,7 @@ function App() {
               Mental Health
             </div>
             <MentalHealthWorkflow
-              mode={mode}
+              mode="doctor"
               pollTimeoutSeconds={pollTimeoutSeconds}
               state={mhState}
               onAnalyze={runMentalHealth}

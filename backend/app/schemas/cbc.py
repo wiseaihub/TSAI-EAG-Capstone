@@ -17,7 +17,7 @@ class CBCInput(BaseModel):
     sex: str | None = Field(
         None,
         example="female",
-        description="Optional biological sex for CBC interpretation (male/female).",
+        description="Optional sex for CBC interpretation (e.g. male, female, third_gender).",
     )
     hemoglobin: float = Field(..., example=13.5, description="Hb (g/dL)")
     wbc: float = Field(..., example=7000, description="WBC (per µL)")

@@ -101,3 +101,18 @@ export async function fetchRecentAgentSessions(token) {
   }
   return await response.json();
 }
+
+export async function fetchCurrentUser(token) {
+  const response = await fetch(`${getApiBase()}/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const parsed = await parseJsonResponse(response);
+  if (!parsed.ok) {
+    const err = new Error(String(parsed.data?.error || "Unable to fetch current user"));
+    err.status = parsed.data?.status || response.status;
+    throw err;
+  }
+  return parsed.data;
+}

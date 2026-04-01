@@ -1,5 +1,9 @@
 # Docker deployment
 
+## Railway (Docker Compose import)
+
+Use **[`docker-compose.railway.yml`](docker-compose.railway.yml)** for Railway’s compose-on-canvas flow: named volumes only (no `../../` bind mounts), no repo-wide backend volume. You still need both code trees available at build time (sibling `S18Share` or set `S18_PATH`). See the comment block at the top of that file.
+
 ## Build and run locally
 
 ```bash
@@ -49,6 +53,39 @@ This starts:
 - **ollama** for S18 (port 11434)
 
 S18's mockehr uses `WISE_MOCKEHR_BASE_URL=http://backend:8000` to fetch patient data and labs from wise-ai's Mock EHR API.
+
+---
+
+## Doctor provisioning (RBAC)
+
+Set a provisioning secret for the backend (in your root `.env` or compose env):
+
+```bash
+DOCTOR_PROVISION_SECRET=change_me_long_random_value
+```
+
+Apply/restart after env updates:
+
+```bash
+cd deployment/docker
+docker compose up -d --build backend
+```
+
+Promote a user to doctor via API:
+
+```bash
+curl -X POST "http://localhost:8000/auth/provision-doctor" \
+  -H "Content-Type: application/json" \
+  -H "X-Provision-Secret: change_me_long_random_value" \
+  -d '{"user_id":"<supabase_user_id>"}'
+```
+
+Verify role for an access token:
+
+```bash
+curl "http://localhost:8000/auth/me" \
+  -H "Authorization: Bearer <access_token>"
+```
 
 ---
 

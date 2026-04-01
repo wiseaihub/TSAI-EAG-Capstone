@@ -50,7 +50,7 @@ def live_client():
     app.include_router(orch.router)
 
     def _user():
-        return {"sub": _PATIENT_ID}
+        return {"sub": _PATIENT_ID, "app_role": "doctor"}
 
     app.dependency_overrides[get_current_user] = _user
     app.dependency_overrides[get_db] = _real_db

@@ -1,0 +1,88 @@
+# Stack for Railway (compose import) or local smoke tests without host bind mounts.
+#
+# Railway: drag this file onto the project canvas (see https://docs.railway.com/deploy/dockerfiles — Docker Compose).
+# Not every Compose key is supported; adjust in the dashboard if import warns.
+#
+# Layout: same as docker-compose.full.yml — wise-ai repo with `backend/` and `frontend/`, and S18 sources at
+#   ${S18_PATH:-../../../S18Share/S18Share} relative to this file. For one Railway repo, vendor S18 under wise-ai
+#   and set S18_PATH (e.g. S18_PATH=../../s18share).
+#
+# Set env vars in Railway or a root `.env` when running locally:
+#   DATABASE_URL, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_URL (public URL of backend for the browser),
+#   GEMINI_API_KEY (optional), etc.
+
+services:
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - S18_BASE_URL=http://s18share-api:8000
+      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
+      - S18_POLL_TIMEOUT_SEC=${S18_POLL_TIMEOUT_SEC:-900}
+      - S18_POLL_INTERVAL_SEC=${S18_POLL_INTERVAL_SEC:-2.0}
+      - WISE_TIMEOUT_SEC=${WISE_TIMEOUT_SEC:-1200}
+      - DEBUG_LOG_PATH=/tmp/wise-ai-debug.log
+    networks:
+      - wise_net
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - wise_net
+
+  s18share-api:
+    build:
+      context: ${S18_PATH:-../../../S18Share/S18Share}
+      dockerfile: Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AUTH_ENABLED=${S18_AUTH_ENABLED:-false}
+      - OLLAMA_BASE_URL=http://s18share-ollama:11434
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-300}
+      - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
+      - WISE_MOCKEHR_BASE_URL=http://backend:8000
+      - DEBUG_LOG_PATH=/app/data/debug-f905fa.log
+    volumes:
+      - s18_data:/app/data
+      - s18_memory:/app/memory
+      - s18_config:/app/config
+      - s18_faiss:/app/mcp_servers/faiss_index
+    depends_on:
+      - s18share-ollama
+      - backend
+    networks:
+      - wise_net
+
+  s18share-ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - wise_net
+
+volumes:
+  ollama_data:
+    name: s18share_ollama_data
+  s18_data:
+  s18_memory:
+  s18_config:
+  s18_faiss:
+
+networks:
+  wise_net:
+    driver: bridge
