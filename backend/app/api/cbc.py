@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.db.rls_context import apply_supabase_jwt_claims
 from app.services.agent_service import run_cbc
 from app.services import case_tracking as case_svc
-from app.core.security import get_current_user
+from app.core.security import require_doctor
 
 router = APIRouter()
 
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.post("/analyze")
 def analyze_cbc(
     payload: CBCInput,
-    user=Depends(get_current_user),
+    user=Depends(require_doctor),
     db: Session = Depends(get_db),
 ):
     """CBC-only analysis; dual-writes runtime tables same as POST /analyze (without WISE)."""
