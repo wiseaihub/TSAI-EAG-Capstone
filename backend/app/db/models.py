@@ -1,10 +1,12 @@
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     Float,
     ForeignKey,
     JSON,
+    Integer,
     String,
     Text,
     func,
@@ -107,4 +109,58 @@ class AuditEvent(Base):
     entity_id = Column(String, nullable=False)
     event_type = Column(String, nullable=False)
     event_payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+
+
+class KbEntry(Base):
+    __tablename__ = "kb_entries"
+
+    id = Column(String, primary_key=True)
+    owner_user_id = Column(String, index=True, nullable=True)
+    role = Column(String, nullable=False)
+    layer = Column(String, nullable=False)
+    patient_id = Column(String, index=True, nullable=True)
+    doctor_id = Column(String, index=True, nullable=True)
+    title = Column(String, nullable=True)
+    content = Column(Text, nullable=False)
+    source_type = Column(String, nullable=True)
+    source_url = Column(Text, nullable=True)
+    source_domain = Column(String, nullable=True)
+    source_ref = Column(JSON, nullable=True)
+    tags = Column(JSON, nullable=True)
+    metadata_ = Column("metadata", JSON, nullable=True)
+    is_shared = Column(Boolean, nullable=False, server_default="false")
+    base_confidence = Column(Float, nullable=False, server_default="0.5")
+    feedback_score = Column(Float, nullable=False, server_default="0")
+    confidence = Column(Float, nullable=False, server_default="0.5")
+    created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class KbFeedback(Base):
+    __tablename__ = "kb_feedback"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    entry_id = Column(String, ForeignKey("kb_entries.id"), index=True, nullable=False)
+    user_id = Column(String, index=True, nullable=False)
+    role = Column(String, nullable=False)
+    rating = Column(Integer, nullable=False)
+    confidence_before = Column(Float, nullable=True)
+    confidence_after = Column(Float, nullable=True)
+    comment = Column(Text, nullable=True)
+    correction = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+
+
+class KbQueryLog(Base):
+    __tablename__ = "kb_query_logs"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(String, index=True, nullable=False)
+    role = Column(String, nullable=False)
+    query_text = Column(Text, nullable=False)
+    layer_order = Column(JSON, nullable=True)
+    filters = Column(JSON, nullable=True)
+    result_entry_ids = Column(JSON, nullable=True)
+    response_confidence = Column(Float, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)

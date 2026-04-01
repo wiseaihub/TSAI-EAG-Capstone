@@ -20,6 +20,9 @@ def apply_supabase_jwt_claims(db: Session, jwt_sub: str) -> None:
     """
     if not jwt_sub:
         return
+    dialect = getattr(getattr(db, "bind", None), "dialect", None)
+    if not dialect or getattr(dialect, "name", "") != "postgresql":
+        return
     sub = str(jwt_sub).strip()
     if not sub:
         return
