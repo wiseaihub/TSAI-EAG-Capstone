@@ -82,3 +82,36 @@ def test_poll_s18_run_exits_on_cancel_event(monkeypatch):
         elapsed = time.monotonic() - start
         assert "cancelled by caller" in str(e)
         assert elapsed < 2.0, f"Should exit immediately but took {elapsed:.1f}s"
+
+
+def test_s18_response_to_result_exposes_mh_plan_guard_marker():
+    s18_data = {
+        "status": "completed",
+        "graph": {
+            "nodes": [
+                {
+                    "id": "Query",
+                    "data": {
+                        "output": {
+                            "plan_graph": {"nodes": [], "edges": []},
+                            "mental_health_plan_guard_applied": True,
+                        }
+                    },
+                },
+                {
+                    "id": "T001",
+                    "data": {
+                        "output": {
+                            "risk_level": "moderate",
+                            "confidence": 0.8,
+                            "flags": ["mock_s18"],
+                        }
+                    },
+                },
+            ]
+        },
+    }
+
+    result = _s18_response_to_result(s18_data, run_id="run-mh-guard")
+
+    assert "mental_health_plan_guard_applied" in result["flags"]

@@ -532,6 +532,42 @@ def _dedupe_recommendations(items: list[str]) -> list[str]:
     return out
 
 
+def _detect_mh_plan_guard_applied(s18_data: dict) -> bool:
+    """Detect whether S18 planner applied the mental-health routing guard."""
+    if not isinstance(s18_data, dict):
+        return False
+    if s18_data.get("mental_health_plan_guard_applied") is True:
+        return True
+
+    graph = s18_data.get("graph") or {}
+    if not isinstance(graph, dict):
+        return False
+    if graph.get("mental_health_plan_guard_applied") is True:
+        return True
+
+    nodes = graph.get("nodes") or graph.get("graph", {}).get("nodes") or []
+    if not isinstance(nodes, list):
+        return False
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        data = node.get("data") or {}
+        if not isinstance(data, dict):
+            continue
+        for field in ("output", "result", "response", "value"):
+            raw = data.get(field) or node.get(field)
+            if isinstance(raw, dict) and raw.get("mental_health_plan_guard_applied") is True:
+                return True
+            if isinstance(raw, str):
+                try:
+                    parsed = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if isinstance(parsed, dict) and parsed.get("mental_health_plan_guard_applied") is True:
+                    return True
+    return False
+
+
 def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
     """Map S18 GET response to WISE result shape: risk_level, confidence, flags."""
     status = s18_data.get("status", "unknown")
@@ -636,6 +672,8 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
                     apply_output(raw)
                     break
 
+    if _detect_mh_plan_guard_applied(s18_data):
+        flags.append("mental_health_plan_guard_applied")
     flags = _dedupe_flags(flags)
     recommendations = _dedupe_recommendations(recommendations)
 
