@@ -4,6 +4,7 @@ import { AccountHeader, LoginPanel, PasswordRecoveryPanel } from "./features/aut
 import { CbcWorkflow } from "./features/cbc/cbc-workflow";
 import { MentalHealthWorkflow } from "./features/mental-health/mh-workflow";
 import { SessionTimeline } from "./features/sessions/session-timeline";
+import { QuickSummaryCard } from "./features/shared/quick-summary-card";
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Separator } from "./components/ui/separator";
@@ -468,6 +469,8 @@ function App() {
           </CardContent>
         </Card>
       </header>
+
+      <QuickSummaryCard cbcResult={cbcState.result} mhResult={mhState.result} />
 
       <Alert>
         <Activity className="h-4 w-4" />
