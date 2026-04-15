@@ -78,10 +78,14 @@ services:
     image: ollama/ollama:latest
     container_name: s18share-ollama
     restart: unless-stopped
+    gpus: all
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     networks:
       - wise_net
 
