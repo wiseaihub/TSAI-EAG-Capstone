@@ -5,11 +5,22 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 
 from app.agents.wise_adapter import run_wise_agent
+from app.core.config import settings
 from app.schemas.patient import PatientRead
 from app.schemas.vitals import VitalsReading
 from app.schemas.lab import LabResultRead
 
 router = APIRouter(tags=["Mock EHR"])
+
+def _default_s18_run_metadata() -> dict:
+    metadata = {
+        "integration_id": settings.s18_integration_id,
+        "workflow_id": settings.s18_workflow_id,
+        "contract_version": settings.s18_contract_version,
+        "source_system": settings.s18_source_system,
+    }
+    return {k: v for k, v in metadata.items() if v is not None}
+
 
 # Per-patient CBC cache: populated by /analyze, consumed by /patients/{id}/labs (S18 EHRDataMinerAgent).
 _patient_labs_cache: dict[str, dict] = {}
@@ -119,7 +130,12 @@ def fetch_labs(patient_id: str, request: Request) -> list[LabResultRead]:
     # Skip run_wise_agent when caller is S18 mockehr (avoids nested S18 run)
     if request.headers.get("X-Request-Source") != "s18":
         try:
-            run_wise_agent({"event": "mock_ehr_labs_fetch"}, patient_id, db=None)
+            run_wise_agent(
+                {"event": "mock_ehr_labs_fetch"},
+                patient_id,
+                db=None,
+                run_metadata=_default_s18_run_metadata(),
+            )
         except Exception:
             pass
     return _sample_labs(patient_id)

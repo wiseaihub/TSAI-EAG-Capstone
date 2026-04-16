@@ -130,6 +130,7 @@ def _run_s18_agent(
     agent_version: str = "v1",
     case_id: str | None = None,
     cancel_event: threading.Event | None = None,
+    run_metadata: dict | None = None,
     *,
     log_entry_label: str = "run_s18_agent",
 ) -> dict:
@@ -164,7 +165,7 @@ def _run_s18_agent(
     )
     # #endregion
     try:
-        run_id = _invoke_s18_run(query, access_token=access_token)
+        run_id = _invoke_s18_run(query, access_token=access_token, run_metadata=run_metadata)
     except requests.RequestException as e:
         result = {
             "risk_level": "High",
@@ -315,7 +316,7 @@ def _run_s18_agent(
     }
 
 
-def _invoke_s18_run(query: str, access_token: str | None = None) -> str:
+def _invoke_s18_run(query: str, access_token: str | None = None, run_metadata: dict | None = None) -> str:
     """Start S18 run via POST /runs. Returns run_id."""
     url = f"{S18_BASE_URL}/runs"
     auth_env_presence = {
@@ -338,10 +339,25 @@ def _invoke_s18_run(query: str, access_token: str | None = None) -> str:
         run_id="",
     )
     # #endregion
+    request_payload = {"query": query}
+    if isinstance(run_metadata, dict):
+        for key in (
+            "integration_id",
+            "workflow_id",
+            "contract_version",
+            "source_system",
+            "external_event_id",
+            "raw_payload",
+            "consent_ref",
+            "idempotency_key",
+        ):
+            value = run_metadata.get(key)
+            if value is not None:
+                request_payload[key] = value
     try:
         resp = requests.post(
             url,
-            json={"query": query},
+            json=request_payload,
             headers=headers,
             timeout=30,
         )
@@ -714,6 +730,7 @@ def run_wise_agent(
     execution_mode: str = "full",
     case_id: str | None = None,
     cancel_event: threading.Event | None = None,
+    run_metadata: dict | None = None,
 ):
     """
     Convert payload into S18 task format, invoke S18 runtime via HTTP,
@@ -729,6 +746,7 @@ def run_wise_agent(
         "v1",
         case_id=case_id,
         cancel_event=cancel_event,
+        run_metadata=run_metadata,
         log_entry_label="run_wise_agent",
     )
 
@@ -742,6 +760,7 @@ def run_mental_health_wise(
     execution_mode: str = "full",
     case_id: str | None = None,
     cancel_event: threading.Event | None = None,
+    run_metadata: dict | None = None,
 ):
     """
     Mental health S18 pass: query tags [Task: mental_health] and embeds local screening summary.
@@ -757,5 +776,6 @@ def run_mental_health_wise(
         "v1",
         case_id=case_id,
         cancel_event=cancel_event,
+        run_metadata=run_metadata,
         log_entry_label="run_mental_health_wise",
     )
