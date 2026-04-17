@@ -232,6 +232,10 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
+`/health` now exposes tenancy defaults so deployment posture is explicit:
+- `tenancy_tier` (default `starter`)
+- `data_region` (default `in`)
+
 **Frontend** (from `frontend/`):
 
 ```bash

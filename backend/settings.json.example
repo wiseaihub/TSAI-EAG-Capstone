@@ -1,3 +1,7 @@
 {
-  "run_poll_timeout_seconds": 900
+  "run_poll_timeout_seconds": 900,
+  "tenancy": {
+    "default_tier": "starter",
+    "default_data_region": "in"
+  }
 }
