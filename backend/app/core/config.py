@@ -38,6 +38,8 @@ class Settings:
     s18_workflow_id: str | None = os.getenv("S18_WORKFLOW_ID")
     s18_contract_version: str | None = os.getenv("S18_CONTRACT_VERSION")
     s18_source_system: str | None = os.getenv("S18_SOURCE_SYSTEM")
+    tenancy_tier: str = (os.getenv("TENANCY_TIER") or "starter").strip().lower()
+    tenancy_default_region: str = (os.getenv("TENANCY_DEFAULT_DATA_REGION") or "in").strip().lower()
 
     # Total wait timeout for polling S18 GET /runs/{id}. Exposed via GET /health so clients/gateways can set their timeout.
     # Priority: env RUN_POLL_TIMEOUT_SECONDS > settings.json run_poll_timeout_seconds > env S18_POLL_TIMEOUT_SEC (backward compat) > default 900.
