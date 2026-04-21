@@ -66,6 +66,10 @@ services:
       - DEBUG_LOG_PATH=${DEBUG_LOG_PATH:-/app/data/debug-f905fa.log}
       # Sentence Transformers / Hugging Face Hub cache (same path as volume mount below).
       - HF_HOME=/home/appuser/.cache/huggingface
+      # Mounting huggingface_hub_cache causes Docker to create /home/appuser/.cache as root,
+      # so redirect uv's cache to a user-writable path inside /app.
+      - UV_CACHE_DIR=/app/.cache/uv
+      - XDG_CACHE_HOME=/app/.cache
     volumes:
       - ${S18_PATH:-../../../S18Share/S18Share}/data:/app/data
       - ${S18_PATH:-../../../S18Share/S18Share}/memory:/app/memory
