@@ -28,6 +28,12 @@ The **original capstone repository layout** described in early TSAI materials (e
 
 **This README** documents the **current version** of the repository: a **FastAPI** backend (`backend/`), a **Vite + React** web app (`frontend/`), Docker deployment under `deployment/docker/`, and the flows implemented today—including CBC and mental health workflows, Mock EHR APIs, optional **S18** narrative support via long‑polling integration, and **Supabase**‑backed sign‑in for the WISE Clinical Portal.
 
+### S18 interoperability posture
+
+WISE AI remains the healthcare product layer while S18 acts as the reusable
+orchestration backend. This lets WISE keep domain safety and UX focus, while
+the orchestration core evolves independently for non-healthcare use cases.
+
 ---
 
 ## Current UI (WISE Clinical Portal)
