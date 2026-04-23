@@ -3,6 +3,9 @@
 #
 # Prerequisite: S18Share must be a sibling of wise-ai (e.g. ../S18Share/S18Share).
 # Override S18_PATH if your layout differs: S18_PATH=/path/to/S18Share docker compose -f docker-compose.full.yml up -d
+#
+# S18 embeddings: if config uses embedding_provider=sentence_transformers (e.g. BAAI/bge-base-en-v1.5), the
+# huggingface_hub_cache volume persists downloads across container recreates (matches S18Share docker-compose.yml).
 
 services:
   backend:
@@ -61,11 +64,19 @@ services:
       - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
       - WISE_MOCKEHR_BASE_URL=http://backend:8000
       - DEBUG_LOG_PATH=${DEBUG_LOG_PATH:-/app/data/debug-f905fa.log}
+      # Sentence Transformers / Hugging Face Hub cache (same path as volume mount below).
+      - HF_HOME=/home/appuser/.cache/huggingface
+      # Mounting huggingface_hub_cache causes Docker to create /home/appuser/.cache as root,
+      # so redirect uv's cache to a user-writable path inside /app.
+      - UV_CACHE_DIR=/app/.cache/uv
+      - XDG_CACHE_HOME=/app/.cache
     volumes:
       - ${S18_PATH:-../../../S18Share/S18Share}/data:/app/data
       - ${S18_PATH:-../../../S18Share/S18Share}/memory:/app/memory
       - ${S18_PATH:-../../../S18Share/S18Share}/config:/app/config
       - ${S18_PATH:-../../../S18Share/S18Share}/mcp_servers/faiss_index:/app/mcp_servers/faiss_index
+      # Persist Sentence Transformers / Hugging Face model downloads (e.g. BAAI/bge-base-en-v1.5)
+      - huggingface_hub_cache:/home/appuser/.cache/huggingface
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -78,10 +89,14 @@ services:
     image: ollama/ollama:latest
     container_name: s18share-ollama
     restart: unless-stopped
+    gpus: all
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     networks:
       - wise_net
 
@@ -89,6 +104,9 @@ volumes:
   ollama_data:
     # Same name as standalone S18Share so models persist when switching between merged/separate runs
     name: s18share_ollama_data
+  huggingface_hub_cache:
+    # Same name as standalone S18Share so BGE/HF weights persist when switching between merged/separate runs
+    name: s18share_huggingface_hub_cache
 
 networks:
   wise_net:

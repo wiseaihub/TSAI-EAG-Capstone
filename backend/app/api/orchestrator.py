@@ -36,6 +36,16 @@ _default_wise_timeout = _pts + 300
 WISE_TIMEOUT_SEC = float(os.environ.get("WISE_TIMEOUT_SEC", str(max(1200, _default_wise_timeout))))
 
 
+def _default_s18_run_metadata() -> dict:
+    metadata = {
+        "integration_id": settings.s18_integration_id,
+        "workflow_id": settings.s18_workflow_id,
+        "contract_version": settings.s18_contract_version,
+        "source_system": settings.s18_source_system,
+    }
+    return {k: v for k, v in metadata.items() if v is not None}
+
+
 def _dedupe_recommendations(*groups: object) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
@@ -177,6 +187,7 @@ def _run_wise_with_timeout(
                 execution_mode=execution_mode,
                 case_id=case_id,
                 cancel_event=cancel_event,
+                run_metadata=_default_s18_run_metadata(),
             )
         finally:
             db.close()
@@ -225,6 +236,7 @@ def _run_mh_wise_with_timeout(
                 execution_mode=execution_mode,
                 case_id=case_id,
                 cancel_event=cancel_event,
+                run_metadata=_default_s18_run_metadata(),
             )
         finally:
             db.close()

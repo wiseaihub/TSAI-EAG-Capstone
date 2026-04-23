@@ -11,4 +11,6 @@ def health_check():
         "status": "ok",
         "service": "WISE AI Backend",
         "poll_timeout_seconds": settings.run_poll_timeout_seconds,
+        "tenancy_tier": settings.tenancy_tier,
+        "data_region": settings.tenancy_default_region,
     }
