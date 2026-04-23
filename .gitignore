@@ -28,6 +28,12 @@ build/
 *.swp
 *.swo
 
+# Frontend test artifacts
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+frontend/.vitest-cache/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -35,3 +41,8 @@ Thumbs.db
 # Logs and temp
 *.log
 .cache/
+docs/EAGV2_DEMO_FALLBACK_CLIPS.md
+docs/EAGV2_DEMO_SAMPLE_PAYLOADS.json
+docs/EAGV2_DEMO_STITCH_EXPORT.md
+docs/EAGV2_DEMO_STORY_ASSETS.md
+docs/EAGV2_WISE_FLOW_REHEARSAL.md
