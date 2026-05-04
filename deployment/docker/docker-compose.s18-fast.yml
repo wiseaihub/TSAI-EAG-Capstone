@@ -1,0 +1,18 @@
+services:
+  # Fast-iteration mode for S18Share API:
+  # - Reuses existing image (run base stack once with --build)
+  # - Mounts S18 source into /app
+  # - Enables uvicorn --reload for code edits without rebuilds
+  s18share-api:
+    volumes:
+      - ${S18_PATH:-../../../S18Share/S18Share}:/app
+    command:
+      - uvicorn
+      - api:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --timeout-keep-alive
+      - "75"
+      - --reload
