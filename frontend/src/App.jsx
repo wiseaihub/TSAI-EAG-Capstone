@@ -186,9 +186,11 @@ function App() {
     }
     if (data.user && !data.session) {
       setInfoMessage(
-        "If this email can receive confirmation, check your inbox and spam folder before signing in."
+        "Account created! Check your inbox and spam folder for a confirmation link before signing in."
       );
     }
+    // When email confirmation is disabled in Supabase, data.session is present
+    // immediately and onAuthStateChange handles the login automatically.
   }
 
   async function forgotPassword() {
@@ -453,7 +455,8 @@ function App() {
         <div className="rounded-2xl border border-slate-700/20 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 px-7 py-7 text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] md:px-8 md:py-8">
           <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">WISE Clinical Intelligence Portal</h1>
           <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-100/90 md:text-[15px]">
-            Unified CBC and Mental Health workflows powered by local engines plus optional S18 narrative support.
+            Psychologist-first intake workflows with structured PHQ-9/GAD-7 guidance, safety triage, and optional S18
+            narrative support.
           </p>
         </div>
         <AccountHeader session={session} onLogout={logout} />
@@ -492,19 +495,6 @@ function App() {
         <div className="space-y-7">
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
-              <FlaskConical className="h-4 w-4" />
-              CBC
-            </div>
-            <CbcWorkflow
-              mode={userProfile?.app_role === "doctor" ? "doctor" : "patient"}
-              pollTimeoutSeconds={pollTimeoutSeconds}
-              state={cbcState}
-              onAnalyze={runCbc}
-            />
-          </div>
-          <Separator />
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
               <BrainCircuit className="h-4 w-4" />
               Mental Health
             </div>
@@ -513,6 +503,19 @@ function App() {
               pollTimeoutSeconds={pollTimeoutSeconds}
               state={mhState}
               onAnalyze={runMentalHealth}
+            />
+          </div>
+          <Separator />
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+              <FlaskConical className="h-4 w-4" />
+              CBC
+            </div>
+            <CbcWorkflow
+              mode={userProfile?.app_role === "doctor" ? "doctor" : "patient"}
+              pollTimeoutSeconds={pollTimeoutSeconds}
+              state={cbcState}
+              onAnalyze={runCbc}
             />
           </div>
         </div>

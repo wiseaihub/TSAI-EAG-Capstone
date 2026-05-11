@@ -6,6 +6,14 @@
 #
 # S18 embeddings: if config uses embedding_provider=sentence_transformers (e.g. BAAI/bge-base-en-v1.5), the
 # huggingface_hub_cache volume persists downloads across container recreates (matches S18Share docker-compose.yml).
+#
+# Profile switching gotcha (read before changing S18 provider):
+# The s18share-api container_name is shared with S18Share's own docker-compose.yml. If you previously started
+# S18Share standalone with a different profile (e.g. .env.docker.llama-cpp), the existing container will be
+# reused and its baked-in env (S18_PROFILE, OLLAMA_BASE_URL, LLAMA_CPP_BASE_URL) will keep applying even after
+# changing this compose file. Force a fresh container when switching:
+#   docker rm -f s18share-api
+#   docker compose -f deployment/docker/docker-compose.full.yml up -d s18share-api
 
 services:
   backend:
@@ -58,11 +66,13 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - AUTH_ENABLED=${S18_AUTH_ENABLED:-false}
+      # Standard S18Share env names; recreate the container after changing these (see profile switching gotcha above).
       - S18_PROFILE=${S18_PROFILE:-local-laptop-gemma}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://s18share-ollama:11434}
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-300}
       - LLAMA_CPP_BASE_URL=${LLAMA_CPP_BASE_URL:-http://host.docker.internal:8080}
       - LLAMA_CPP_TIMEOUT=${LLAMA_CPP_TIMEOUT:-360}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       # Align advertised /runs poll hint with wise-ai client (optional; wise-ai uses its own poll loop).
       - RUN_POLL_TIMEOUT_SECONDS=${RUN_POLL_TIMEOUT_SECONDS:-900}
       - WISE_MOCKEHR_BASE_URL=http://backend:8000
@@ -85,6 +95,7 @@ services:
     depends_on:
       - s18share-ollama
       - backend
+      - qdrant
     networks:
       - wise_net
 
@@ -103,6 +114,15 @@ services:
     networks:
       - wise_net
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: s18share-qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - wise_net
+
 volumes:
   ollama_data:
     # Same name as standalone S18Share so models persist when switching between merged/separate runs
@@ -110,6 +130,8 @@ volumes:
   huggingface_hub_cache:
     # Same name as standalone S18Share so BGE/HF weights persist when switching between merged/separate runs
     name: s18share_huggingface_hub_cache
+  qdrant_data:
+    name: s18share_qdrant_data
 
 networks:
   wise_net:

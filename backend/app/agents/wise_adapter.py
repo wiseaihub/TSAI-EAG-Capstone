@@ -463,13 +463,30 @@ def _extract_s18_failure_reason(s18_data: dict) -> str | None:
             return reason.strip()
         nodes = graph.get("nodes") or []
         if isinstance(nodes, list):
+            node_errors: list[str] = []
+            node_outputs: list[str] = []
             for n in nodes:
                 if not isinstance(n, dict):
                     continue
                 data = n.get("data") or {}
-                reason = data.get("error") or (data.get("output") if isinstance(data.get("output"), str) else None)
-                if isinstance(reason, str) and reason.strip():
-                    return reason.strip()
+                node_error = data.get("error") or n.get("error")
+                if isinstance(node_error, str) and node_error.strip():
+                    node_errors.append(node_error.strip())
+                    continue
+                node_output = data.get("output")
+                if isinstance(node_output, str) and node_output.strip():
+                    node_outputs.append(node_output.strip())
+            if node_errors:
+                return node_errors[0]
+            for text in node_outputs:
+                # Planner JSON blobs can appear in failed runs; do not treat them as root-cause errors.
+                try:
+                    parsed = json.loads(text)
+                except Exception:
+                    parsed = None
+                if isinstance(parsed, dict) and isinstance(parsed.get("plan_graph"), dict):
+                    continue
+                return text
     return None
 
 
@@ -594,31 +611,6 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
         _debug_log("_s18_response_to_result: status failed", {"s18_keys": list(s18_data.keys()), "has_error": "error" in s18_data, "has_message": "message" in s18_data, "graph_type": type(s18_data.get("graph")).__name__}, "A;C", run_id=run_id)
         # #endregion
         failure_reason = _extract_s18_failure_reason(s18_data)
-        if failure_reason:
-            try:
-                parsed_reason = json.loads(failure_reason)
-            except Exception:
-                parsed_reason = None
-            if isinstance(parsed_reason, dict) and isinstance(parsed_reason.get("plan_graph"), dict):
-                flags = ["s18_planner_payload_in_failure", "s18_soft_fallback_applied"]
-                flags.append("s18_reason: planner payload returned in failure path")
-                return {
-                    "risk_level": "Moderate",
-                    "confidence": 0.35,
-                    "flags": flags,
-                    "session_id": run_id,
-                    "s18_status": status,
-                }
-        if failure_reason and "missing plan_graph" in failure_reason.lower():
-            flags = ["s18_planner_contract_error", "s18_soft_fallback_applied"]
-            flags.append(f"s18_reason: {failure_reason[:500]}")
-            return {
-                "risk_level": "Moderate",
-                "confidence": 0.25,
-                "flags": flags,
-                "session_id": run_id,
-                "s18_status": status,
-            }
         flags = ["s18_run_failed"]
         if failure_reason:
             flags.append(f"s18_reason: {failure_reason[:500]}")
