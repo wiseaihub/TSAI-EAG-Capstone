@@ -9,7 +9,9 @@
 #
 # Set env vars in Railway or a root `.env` when running locally:
 #   DATABASE_URL, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_URL (public URL of backend for the browser),
+#   VITE_PUBLIC_APP_URL (public browser URL of this frontend — required for Supabase password-reset / email links),
 #   GEMINI_API_KEY (optional), etc.
+# Also add VITE_PUBLIC_APP_URL (e.g. https://<frontend>.up.railway.app) to Supabase → Authentication → Redirect URLs.
 
 services:
   backend:
@@ -36,6 +38,7 @@ services:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY}
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_PUBLIC_APP_URL: ${VITE_PUBLIC_APP_URL:-}
     restart: unless-stopped
     depends_on:
       - backend

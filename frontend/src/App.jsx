@@ -15,6 +15,7 @@ import {
   fetchHealthConfig,
   fetchRecentAgentSessions,
 } from "./lib/api";
+import { getPublicAppOrigin } from "./lib/publicOrigin";
 import { supabase } from "./lib/supabase";
 
 const PASSWORD_RECOVERY_STORAGE_KEY = "wise_password_recovery";
@@ -177,7 +178,7 @@ function App() {
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/`,
+        emailRedirectTo: `${getPublicAppOrigin()}/`,
       },
     });
     if (error) {
@@ -202,7 +203,7 @@ function App() {
       return;
     }
     const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-      redirectTo: `${window.location.origin}/`,
+      redirectTo: `${getPublicAppOrigin()}/`,
     });
     if (error) {
       setAuthError(error.message);
