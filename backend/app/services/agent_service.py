@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from uuid import uuid4
 
@@ -60,6 +61,40 @@ def _cbc_input_echo(payload) -> dict:
         "rbc": getattr(payload, "rbc", None),
         "platelets": getattr(payload, "platelets", None),
     }
+
+
+DEFAULT_CBC_DISCLAIMER = (
+    "CBC findings here are simplified decision-support cues only and do not replace "
+    "formal laboratory interpretation by a qualified clinician."
+)
+
+_CBC_EVIDENCE_CITATIONS = [
+    "Threshold cues (hemoglobin, WBC, platelets, RBC) are illustrative for CDSS demonstration "
+    "and must be validated against local guidelines and full clinical context.",
+]
+
+
+def _cbc_rationale(flags: list[str], payload) -> list[str]:
+    """Deterministic explanation strings parallel to CBCAgent rules (pilot transparency)."""
+    lines: list[str] = []
+    hb = getattr(payload, "hemoglobin", None)
+    wbc = getattr(payload, "wbc", None)
+    plt = getattr(payload, "platelets", None)
+    rbc = getattr(payload, "rbc", None)
+
+    if "Severe anemia" in flags and hb is not None:
+        lines.append(f"Hemoglobin {hb:g} g/dL is below the severe anemia demo threshold (< 8 g/dL).")
+    elif "Mild anemia" in flags and hb is not None:
+        lines.append(f"Hemoglobin {hb:g} g/dL is below the mild anemia demo threshold (< 11 g/dL).")
+    if "Leukocytosis" in flags and wbc is not None:
+        lines.append(f"WBC {wbc:g} /µL exceeds the leukocytosis demo threshold (> 11,000 /µL).")
+    if "Thrombocytopenia" in flags and plt is not None:
+        lines.append(f"Platelets {plt:g} /µL are below the demo thrombocytopenia cue (< 150,000 /µL).")
+    if "Low RBC" in flags and rbc is not None:
+        lines.append(f"RBC {rbc:g} million/µL is below the demo low-RBC cue (< 4.0 million/µL).")
+    if not lines:
+        lines.append("No threshold-based flags fired; pattern reads as lower concern under demo rules.")
+    return lines
 
 
 def _cbc_recommendations(payload, flags: list[str]) -> list[str]:
@@ -148,6 +183,8 @@ def run_cbc(payload, db, patient_id, case_id: str | None = None):
 
     db.commit()
 
+    rationale_lines = _cbc_rationale(analysis["flags"], payload)
+
     return {
         "session_id": analysis["session_id"],
         "risk_level": analysis["risk_level"],
@@ -155,5 +192,8 @@ def run_cbc(payload, db, patient_id, case_id: str | None = None):
         "flags": analysis["flags"],
         "recommendations": recommendations,
         "display_labels": display_labels,
+        "disclaimer": os.environ.get("CBC_DISCLAIMER_TEXT", DEFAULT_CBC_DISCLAIMER),
+        "rationale_lines": rationale_lines,
+        "evidence_citations": list(_CBC_EVIDENCE_CITATIONS),
         **input_echo,
     }

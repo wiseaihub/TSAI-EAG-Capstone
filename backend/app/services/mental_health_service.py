@@ -38,6 +38,48 @@ DEFAULT_CRISIS_MESSAGE = (
     "This application is not a substitute for emergency or mental health care."
 )
 
+MH_EVIDENCE_CITATIONS = [
+    "PHQ-9 and GAD-7 severity bands follow widely used Kroenke et al. screening cutoffs "
+    "(informational only; not a standalone psychiatric diagnosis).",
+]
+
+
+def _mh_rationale_lines(
+    *,
+    phq9_total: int | None,
+    gad7_total: int | None,
+    crisis: bool,
+    suicidal_ideation: bool,
+    self_harm_intent: bool,
+    risk_level: str,
+) -> list[str]:
+    lines: list[str] = []
+    if crisis:
+        lines.append(
+            "Crisis indicators (suicidal ideation or self-harm intent) override numeric scores "
+            "for immediate safety triage."
+        )
+        if suicidal_ideation:
+            lines.append("Suicidal ideation flag recorded — escalate per institutional crisis protocol.")
+        if self_harm_intent:
+            lines.append("Self-harm intent flag recorded — urgent supervised evaluation recommended.")
+        return lines
+
+    if phq9_total is not None:
+        band = _phq9_band(phq9_total)
+        lines.append(
+            f"PHQ-9 total {phq9_total} maps to {_band_to_display(band)} depressive symptom severity band "
+            f"(moderate demo cutoff ≥ {PHQ9_MODERATE}; severe demo cutoff ≥ {PHQ9_SEVERE})."
+        )
+    if gad7_total is not None:
+        band = _gad7_band(gad7_total)
+        lines.append(
+            f"GAD-7 total {gad7_total} maps to {_band_to_display(band)} anxiety symptom severity band "
+            f"(moderate demo cutoff ≥ {GAD7_MODERATE}; severe demo cutoff ≥ {GAD7_SEVERE})."
+        )
+    lines.append(f"Aggregate screening tier for pilot routing: {risk_level}.")
+    return lines
+
 
 def _phq9_band(total: int) -> str:
     if total < 5:
@@ -221,6 +263,14 @@ def run_mental_health_screening(
         suicidal_ideation=payload.suicidal_ideation,
         self_harm_intent=payload.self_harm_intent,
     )
+    rationale_lines = _mh_rationale_lines(
+        phq9_total=phq9_total,
+        gad7_total=gad7_total,
+        crisis=crisis,
+        suicidal_ideation=payload.suicidal_ideation,
+        self_harm_intent=payload.self_harm_intent,
+        risk_level=risk_level,
+    )
 
     return {
         "session_id": session_id,
@@ -236,6 +286,8 @@ def run_mental_health_screening(
         "crisis": crisis,
         "disclaimer": disclaimer,
         "crisis_message": crisis_message,
+        "rationale_lines": rationale_lines,
+        "evidence_citations": list(MH_EVIDENCE_CITATIONS),
     }
 
 
