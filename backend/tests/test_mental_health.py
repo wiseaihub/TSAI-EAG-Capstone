@@ -28,6 +28,8 @@ def test_phq9_moderate_gad_minimal():
     assert any("PHQ-9 (12)" in x for x in r["display_labels"])
     assert isinstance(r.get("recommendations"), list)
     assert len(r["recommendations"]) >= 1
+    assert isinstance(r.get("rationale_lines"), list) and r["rationale_lines"]
+    assert isinstance(r.get("evidence_citations"), list) and r["evidence_citations"]
 
 
 def test_phq9_severe_high_risk():

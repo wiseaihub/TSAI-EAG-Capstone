@@ -10,8 +10,19 @@ function badgeVariantForRisk(risk) {
   return "outline";
 }
 
+function normalizeLines(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((x) => String(x || "").trim()).filter(Boolean);
+  const s = String(value).trim();
+  return s ? [s] : [];
+}
+
 export function RiskSummaryCard({ title, summary }) {
   if (!summary) return null;
+  const rationaleLines = normalizeLines(summary.rationale_lines);
+  const citations = normalizeLines(summary.evidence_citations);
+  const disclaimer = summary.disclaimer ? String(summary.disclaimer).trim() : "";
+
   return (
     <Card className="border-slate-200/90">
       <CardHeader className="pb-3">
@@ -29,6 +40,33 @@ export function RiskSummaryCard({ title, summary }) {
           <span className="text-[var(--muted-foreground)]">Confidence:</span>{" "}
           <span className="font-medium">{String(summary.confidence ?? "n/a")}</span>
         </p>
+        {disclaimer ? (
+          <p className="rounded-lg bg-amber-50/90 p-2.5 text-xs leading-relaxed text-amber-950">{disclaimer}</p>
+        ) : null}
+        {rationaleLines.length > 0 ? (
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+              Transparent rationale
+            </p>
+            <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed">
+              {rationaleLines.map((line, idx) => (
+                <li key={`${idx}-${line.slice(0, 24)}`}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {citations.length > 0 ? (
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+              Evidence / methods notes
+            </p>
+            <ul className="list-disc space-y-1 pl-5 text-xs leading-relaxed text-[var(--muted-foreground)]">
+              {citations.map((c, idx) => (
+                <li key={`${idx}-${c.slice(0, 24)}`}>{c}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {summary.session_id && (
           <p className="text-xs text-[var(--muted-foreground)]">
             Session ID: {summary.session_id}
@@ -78,6 +116,23 @@ export function RecommendationsCard({ recommendations, label }) {
         </ul>
       </CardContent>
     </Card>
+  );
+}
+
+/** When local deterministic tier is High and no MH crisis banner already covers escalation. */
+export function HighRiskEscalationNotice({ summary }) {
+  if (!summary) return null;
+  if (summary.crisis_message) return null;
+  const rl = String(summary.risk_level || "").toLowerCase();
+  if (!rl.includes("high")) return null;
+  return (
+    <Alert variant="destructive">
+      <AlertTitle>High risk tier — prioritize clinical correlation</AlertTitle>
+      <AlertDescription className="text-sm leading-relaxed">
+        Local screening engines flagged a high-concern band. Correlate with history, examination, and institutional
+        pathways before disposition. This CDSS does not replace clinician judgement or emergency protocols.
+      </AlertDescription>
+    </Alert>
   );
 }
 

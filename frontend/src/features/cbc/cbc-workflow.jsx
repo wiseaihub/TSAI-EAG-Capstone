@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
-import { FlagListCard, RecommendationsCard, RiskSummaryCard, TechnicalDetails } from "../shared/result-panels";
+import { FlagListCard, RecommendationsCard, RiskSummaryCard, TechnicalDetails, HighRiskEscalationNotice } from "../shared/result-panels";
+import { ClinicalPilotBanner } from "../shared/clinical-pilot-banner";
 
 function helperTextByMode(mode) {
   if (mode === "doctor") {
@@ -52,6 +53,8 @@ export function CbcWorkflow({ mode, pollTimeoutSeconds, state, onAnalyze }) {
         <CardDescription className="max-w-2xl">{helperTextByMode(mode)}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        <ClinicalPilotBanner pillar="cbc" />
+
         {state.error ? (
           <Alert variant="destructive">
             <AlertTitle>CBC request failed</AlertTitle>
@@ -128,6 +131,9 @@ export function CbcWorkflow({ mode, pollTimeoutSeconds, state, onAnalyze }) {
 
         {state.result ? (
           <div className="grid gap-4 lg:grid-cols-2">
+            <div className="lg:col-span-2">
+              <HighRiskEscalationNotice summary={state.result.cbc} />
+            </div>
             <RiskSummaryCard title="CBC Local Engine" summary={state.result.cbc} />
             <RiskSummaryCard title="WISE Narrative Engine" summary={state.result.wise} />
             <div className="lg:col-span-2">

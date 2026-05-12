@@ -12,10 +12,12 @@ import { cn } from "../../lib/utils";
 import {
   CrisisAlert,
   FlagListCard,
+  HighRiskEscalationNotice,
   RecommendationsCard,
   RiskSummaryCard,
   TechnicalDetails,
 } from "../shared/result-panels";
+import { ClinicalPilotBanner } from "../shared/clinical-pilot-banner";
 import {
   FREQUENCY_OPTIONS,
   GAD7_ITEMS,
@@ -241,6 +243,8 @@ export function MentalHealthWorkflow({ mode, pollTimeoutSeconds, state, onAnalyz
         <CardDescription className="max-w-2xl">{helperTextByMode(mode)}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        <ClinicalPilotBanner pillar="mental-health" />
+
         {formError ? (
           <Alert variant="warning">
             <AlertTitle>Input needs attention</AlertTitle>
@@ -257,14 +261,6 @@ export function MentalHealthWorkflow({ mode, pollTimeoutSeconds, state, onAnalyz
             </AlertDescription>
           </Alert>
         ) : null}
-
-        <Alert variant="warning">
-          <AlertTitle>Safety notice</AlertTitle>
-          <AlertDescription>
-            Screening output is supportive only and does not replace licensed clinical care. Any safety concern
-            requires immediate in-person escalation per local protocol.
-          </AlertDescription>
-        </Alert>
 
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
@@ -515,12 +511,15 @@ export function MentalHealthWorkflow({ mode, pollTimeoutSeconds, state, onAnalyz
 
         {state.result ? (
           <div className="grid gap-4 lg:grid-cols-2">
+            <div className="lg:col-span-2 space-y-3">
+              <HighRiskEscalationNotice summary={state.result.screening} />
+              <CrisisAlert screening={state.result.screening} />
+            </div>
             <RiskSummaryCard title="Screening Summary (Local)" summary={state.result.screening} />
             <RiskSummaryCard title="Narrative Summary (S18)" summary={state.result.wise} />
             <FlagListCard title="Risk Flags (Local)" flags={state.result.screening?.display_labels} />
             <FlagListCard title="Risk Flags (S18)" flags={state.result.wise?.flags} />
             <RecommendationsCard recommendations={state.result.recommendations} label="Recommended clinical next steps" />
-            <CrisisAlert screening={state.result.screening} />
             <TechnicalDetails data={state.result} />
           </div>
         ) : null}
