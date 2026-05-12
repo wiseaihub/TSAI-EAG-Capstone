@@ -17,4 +17,5 @@ FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
+# Bump image: trigger Railway rebuild (2026-05-12)
 CMD ["nginx", "-g", "daemon off;"]
