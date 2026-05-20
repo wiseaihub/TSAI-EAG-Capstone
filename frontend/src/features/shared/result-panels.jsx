@@ -67,6 +67,18 @@ export function RiskSummaryCard({ title, summary }) {
             </ul>
           </div>
         ) : null}
+        {Array.isArray(summary.flags) && summary.flags.length > 0 ? (
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+              Diagnostic flags
+            </p>
+            <ul className="list-disc space-y-1 pl-5 text-xs leading-relaxed text-rose-900">
+              {summary.flags.map((flag, idx) => (
+                <li key={`${idx}-${String(flag).slice(0, 24)}`}>{String(flag)}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {summary.session_id && (
           <p className="text-xs text-[var(--muted-foreground)]">
             Session ID: {summary.session_id}

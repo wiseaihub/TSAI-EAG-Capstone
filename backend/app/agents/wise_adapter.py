@@ -51,8 +51,23 @@ def _debug_session_log(message: str, data: dict, hypothesis_id: str, run_id: str
         pass
 # #endregion
 
-S18_BASE_URL = os.environ.get("S18_BASE_URL", "http://s18share-api:8000")
 S18_POLL_INTERVAL_SEC = float(os.environ.get("S18_POLL_INTERVAL_SEC", "2.0"))
+
+
+def _get_s18_base_url() -> str:
+    """Read S18 base URL at call time (Railway env changes need a process restart)."""
+    return (os.environ.get("S18_BASE_URL", "http://s18share-api:8000") or "").strip().rstrip("/")
+
+
+def _format_s18_request_error(exc: requests.RequestException) -> str:
+    if isinstance(exc, requests.HTTPError):
+        response = exc.response
+        if response is not None:
+            body = (response.text or "").strip().replace("\n", " ")
+            if len(body) > 240:
+                body = body[:240] + "..."
+            return f"HTTP {response.status_code}" + (f" — {body}" if body else "")
+    return str(exc)
 
 
 def _get_poll_timeout_sec() -> float:
@@ -143,7 +158,7 @@ def _run_s18_agent(
         f"{log_entry_label}: query built",
         {
             "query_preview": query[:300] + "..." if len(query) > 300 else query,
-            "S18_BASE_URL": S18_BASE_URL,
+            "S18_BASE_URL": _get_s18_base_url(),
             "patient_id": patient_id,
             "agent_name": agent_name,
         },
@@ -154,9 +169,9 @@ def _run_s18_agent(
         f"{log_entry_label} entry",
         {
             "patient_id_len": len(str(patient_id or "")),
-            "s18_base_url": S18_BASE_URL,
+            "s18_base_url": _get_s18_base_url(),
             "execution_query_len": len(query),
-            "is_host_docker_internal": "host.docker.internal" in S18_BASE_URL,
+            "is_host_docker_internal": "host.docker.internal" in _get_s18_base_url(),
             "uses_request_token": bool(access_token),
             "agent_name": agent_name,
         },
@@ -167,12 +182,14 @@ def _run_s18_agent(
     try:
         run_id = _invoke_s18_run(query, access_token=access_token, run_metadata=run_metadata)
     except requests.RequestException as e:
+        err_detail = _format_s18_request_error(e)
         result = {
             "risk_level": "High",
             "confidence": 0.0,
-            "flags": [f"s18_start_error: {str(e)}"],
+            "flags": [f"s18_start_error: {err_detail}"],
             "session_id": str(uuid4()),
             "s18_status": "error",
+            "s18_error": err_detail,
         }
         record = AgentSession(
             session_id=result["session_id"],
@@ -307,18 +324,23 @@ def _run_s18_agent(
             )
         db.commit()
 
-    return {
+    out = {
         "risk_level": result["risk_level"],
         "confidence": result["confidence"],
         "flags": result["flags"],
         "session_id": session_id,
         "recommendations": result.get("recommendations", []),
     }
+    for extra_key in ("rationale_lines", "evidence_citations", "kb_snippets", "wise_narrative"):
+        val = result.get(extra_key)
+        if val:
+            out[extra_key] = val
+    return out
 
 
 def _invoke_s18_run(query: str, access_token: str | None = None, run_metadata: dict | None = None) -> str:
     """Start S18 run via POST /runs. Returns run_id."""
-    url = f"{S18_BASE_URL}/runs"
+    url = f"{_get_s18_base_url()}/runs"
     auth_env_presence = {
         "S18_API_KEY": bool(os.environ.get("S18_API_KEY")),
         "S18_AUTH_TOKEN": bool(os.environ.get("S18_AUTH_TOKEN")),
@@ -398,7 +420,7 @@ def _invoke_s18_run(query: str, access_token: str | None = None, run_metadata: d
 
     data = resp.json()
     # #region agent log
-    _debug_log("S18 POST /runs response", {"run_id": data.get("id"), "response_keys": list(data.keys()), "base_url": S18_BASE_URL, "query_preview": (query[:200] + "..." if len(query) > 200 else query)}, "B", run_id=data.get("id", ""))
+    _debug_log("S18 POST /runs response", {"run_id": data.get("id"), "response_keys": list(data.keys()), "base_url": _get_s18_base_url(), "query_preview": (query[:200] + "..." if len(query) > 200 else query)}, "B", run_id=data.get("id", ""))
     # #endregion
     return data["id"]
 
@@ -420,7 +442,7 @@ def _poll_s18_run(
     while time.monotonic() < deadline:
         if cancel_event is not None and cancel_event.is_set():
             raise TimeoutError(f"S18 run {run_id} cancelled by caller (orchestrator timeout)")
-        resp = requests.get(f"{S18_BASE_URL}/runs/{run_id}", headers=headers, timeout=10)
+        resp = requests.get(f"{_get_s18_base_url()}/runs/{run_id}", headers=headers, timeout=10)
         if resp.status_code == 404:
             time.sleep(S18_POLL_INTERVAL_SEC)
             continue
@@ -565,6 +587,80 @@ def _dedupe_recommendations(items: list[str]) -> list[str]:
     return out
 
 
+def _dedupe_human_lines(lines: list[str]) -> list[str]:
+    """De-duplicate rationale/citation strings while preserving order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in lines:
+        normalized = " ".join(str(item).split()).strip()
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(normalized)
+    return out
+
+
+def _append_text_lines(target: list[str], value: object) -> None:
+    if value is None:
+        return
+    if isinstance(value, str):
+        s = value.strip()
+        if s:
+            target.append(s)
+        return
+    if isinstance(value, list):
+        for entry in value:
+            _append_text_lines(target, entry)
+
+
+def _collect_rag_excerpts(source: dict, target: list[str], *, max_chunks: int = 6, excerpt_len: int = 420) -> None:
+    """Pull short excerpts from common RAG / retrieval shapes in S18 node outputs."""
+    if not isinstance(source, dict):
+        return
+    for key in ("retrieved_chunks", "rag_chunks", "chunks", "matches", "sources", "citations_detail"):
+        block = source.get(key)
+        if not isinstance(block, list):
+            continue
+        for item in block:
+            if len(target) >= max_chunks:
+                return
+            text = None
+            label = ""
+            if isinstance(item, dict):
+                text = item.get("text") or item.get("content") or item.get("snippet") or item.get("body")
+                label = str(item.get("title") or item.get("doc") or item.get("source") or "").strip()
+            elif isinstance(item, str):
+                text = item
+            if not isinstance(text, str):
+                continue
+            chunk = " ".join(text.split()).strip()
+            if len(chunk) < 24:
+                continue
+            if len(chunk) > excerpt_len:
+                chunk = chunk[: excerpt_len - 3].rsplit(" ", 1)[0] + "…"
+            if label:
+                target.append(f"{label}: {chunk}")
+            else:
+                target.append(chunk)
+
+
+WISE_NARRATIVE_MAX_CHARS = 14000
+
+
+def _merge_narrative_fragments(parts: list[str]) -> str | None:
+    cleaned = [" ".join(p.split()).strip() for p in parts if isinstance(p, str) and p.strip()]
+    cleaned = _dedupe_human_lines(cleaned)
+    if not cleaned:
+        return None
+    merged = "\n\n".join(cleaned)
+    if len(merged) <= WISE_NARRATIVE_MAX_CHARS:
+        return merged
+    return merged[: WISE_NARRATIVE_MAX_CHARS - 1].rsplit("\n\n", 1)[0] + "…"
+
+
 def _detect_mh_plan_guard_applied(s18_data: dict) -> bool:
     """Detect whether S18 planner applied the mental-health routing guard."""
     if not isinstance(s18_data, dict):
@@ -602,7 +698,7 @@ def _detect_mh_plan_guard_applied(s18_data: dict) -> bool:
 
 
 def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
-    """Map S18 GET response to WISE result shape: risk_level, confidence, flags."""
+    """Map S18 GET response to WISE result shape: risk_level, confidence, flags, optional narrative/KB fields."""
     status = s18_data.get("status", "unknown")
     graph = s18_data.get("graph") or {}
 
@@ -627,6 +723,10 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
     confidence = 0.8
     flags: list[str] = []
     recommendations: list[str] = []
+    rationale_accum: list[str] = []
+    citations_accum: list[str] = []
+    narrative_parts: list[str] = []
+    kb_snippets: list[str] = []
 
     def apply_output(out: dict | None) -> None:
         nonlocal risk_level, confidence, flags, recommendations
@@ -646,6 +746,32 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
         recommendations.extend(_recommendations_to_list(out.get("next_steps")))
         recommendations.extend(_extract_recommendations_from_text(str(out.get("response", ""))))
 
+        _append_text_lines(rationale_accum, out.get("rationale_lines"))
+        _append_text_lines(rationale_accum, out.get("rationale"))
+        _append_text_lines(citations_accum, out.get("evidence_citations"))
+        _append_text_lines(citations_accum, out.get("citations"))
+        _append_text_lines(citations_accum, out.get("sources"))
+        _append_text_lines(citations_accum, out.get("kb_sources"))
+        _append_text_lines(citations_accum, out.get("reference_notes"))
+        _collect_rag_excerpts(out, kb_snippets)
+
+        narrative_keys = (
+            "wise_narrative",
+            "narrative",
+            "narrative_text",
+            "markdown",
+            "clinical_narrative",
+            "assistant_message",
+            "wise_output",
+        )
+        for nk in narrative_keys:
+            raw_n = out.get(nk)
+            if isinstance(raw_n, str) and len(raw_n.strip()) > 80:
+                narrative_parts.append(raw_n.strip())
+        resp = out.get("response")
+        if isinstance(resp, str) and len(resp.strip()) > 200:
+            narrative_parts.append(resp.strip())
+
     # Top-level: some S18 responses put final result in output/result/response/data
     for key in ("output", "result", "response", "data"):
         raw = s18_data.get(key)
@@ -653,8 +779,15 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
             continue
         if isinstance(raw, str):
             try:
-                raw = json.loads(raw)
+                parsed = json.loads(raw)
             except (json.JSONDecodeError, TypeError):
+                parsed = None
+            if isinstance(parsed, dict):
+                raw = parsed
+            elif len(raw.strip()) > 240:
+                narrative_parts.append(raw.strip())
+                continue
+            else:
                 continue
         if isinstance(raw, dict):
             apply_output(raw)
@@ -673,8 +806,15 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
                     continue
                 if isinstance(raw, str):
                     try:
-                        raw = json.loads(raw)
+                        parsed = json.loads(raw)
                     except (json.JSONDecodeError, TypeError):
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        raw = parsed
+                    elif len(raw.strip()) > 240:
+                        narrative_parts.append(raw.strip())
+                        continue
+                    else:
                         continue
                 if isinstance(raw, dict):
                     apply_output(raw)
@@ -684,6 +824,17 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
         flags.append("mental_health_plan_guard_applied")
     flags = _dedupe_flags(flags)
     recommendations = _dedupe_recommendations(recommendations)
+    rationale_lines = _dedupe_human_lines(rationale_accum)
+    evidence_citations = _dedupe_human_lines(citations_accum)
+    kb_excerpts = _dedupe_human_lines(kb_snippets)[:12]
+    if kb_excerpts:
+        for line in kb_excerpts:
+            tag = "[KB excerpt] "
+            prefixed = tag + line if not line.startswith(tag) else line
+            if prefixed not in evidence_citations:
+                evidence_citations.append(prefixed)
+        evidence_citations = _dedupe_human_lines(evidence_citations)[:24]
+    wise_narrative = _merge_narrative_fragments(narrative_parts)
 
     # #region agent log — log what we extracted for debugging empty flags
     _debug_log(
@@ -698,13 +849,17 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
             "recommendations_preview": recommendations[:10] if recommendations else [],
             "graph_keys": list(graph.keys()) if isinstance(graph, dict) else [],
             "nodes_count": len(graph.get("nodes") or []) if isinstance(graph, dict) else 0,
+            "rationale_lines_count": len(rationale_lines),
+            "evidence_citations_count": len(evidence_citations),
+            "has_wise_narrative": bool(wise_narrative),
+            "kb_excerpts_count": len(kb_excerpts),
         },
         "A;C",
         run_id=run_id,
     )
     # #endregion
 
-    return {
+    result: dict = {
         "risk_level": risk_level,
         "confidence": confidence,
         "flags": flags,
@@ -712,6 +867,15 @@ def _s18_response_to_result(s18_data: dict, run_id: str) -> dict:
         "session_id": run_id,
         "s18_status": status,
     }
+    if rationale_lines:
+        result["rationale_lines"] = rationale_lines
+    if evidence_citations:
+        result["evidence_citations"] = evidence_citations
+    if kb_excerpts:
+        result["kb_snippets"] = kb_excerpts
+    if wise_narrative:
+        result["wise_narrative"] = wise_narrative
+    return result
 
 
 def run_wise_agent(
