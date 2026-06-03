@@ -26,6 +26,7 @@ import {
   phq9SeverityLabel,
   sumAnswers,
 } from "./questionnaires";
+import { DsmKbWiseGrounding, DsmKbWorkflowHint } from "./dsm-kb-panel";
 
 function helperTextByMode(mode) {
   if (mode === "doctor") {
@@ -244,6 +245,7 @@ export function MentalHealthWorkflow({ mode, pollTimeoutSeconds, state, onAnalyz
       </CardHeader>
       <CardContent className="space-y-5">
         <ClinicalPilotBanner pillar="mental-health" />
+        <DsmKbWorkflowHint includeS18={includeS18} />
 
         {formError ? (
           <Alert variant="warning">
@@ -514,6 +516,9 @@ export function MentalHealthWorkflow({ mode, pollTimeoutSeconds, state, onAnalyz
             <div className="lg:col-span-2 space-y-3">
               <HighRiskEscalationNotice summary={state.result.screening} />
               <CrisisAlert screening={state.result.screening} />
+            </div>
+            <div className="lg:col-span-2">
+              <DsmKbWiseGrounding wise={state.result.wise} />
             </div>
             <RiskSummaryCard title="Screening Summary (Local)" summary={state.result.screening} />
             <RiskSummaryCard title="Narrative Summary (S18)" summary={state.result.wise} />
