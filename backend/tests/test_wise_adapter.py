@@ -84,6 +84,43 @@ def test_poll_s18_run_exits_on_cancel_event(monkeypatch):
         assert elapsed < 2.0, f"Should exit immediately but took {elapsed:.1f}s"
 
 
+def test_s18_response_to_result_collects_narrative_kb_and_rationale_fields():
+    """Rationale, citations, RAG-style chunks, and long narrative strings surface for the UI."""
+    s18_data = {
+        "status": "completed",
+        "graph": {
+            "nodes": [
+                {
+                    "data": {
+                        "output": {
+                            "risk_level": "Moderate",
+                            "confidence": 0.72,
+                            "flags": ["mock_mh"],
+                            "rationale_lines": ["PHQ-9 band suggests follow-up correlation."],
+                            "evidence_citations": ["Screening thresholds per Kroenke et al."],
+                            "retrieved_chunks": [
+                                {"text": "Major depressive disorder diagnostic criteria excerpt for pilot display."},
+                            ],
+                            "narrative_text": ("Synthetic narrative tying screening scores to clinician-facing summary text " * 3),
+                        },
+                    },
+                },
+            ],
+        },
+    }
+
+    result = _s18_response_to_result(s18_data, run_id="run-mh-kb")
+
+    rationale = result.get("rationale_lines") or []
+    assert rationale and "PHQ-9 band" in rationale[0]
+    cites = result.get("evidence_citations") or []
+    assert any("Kroenke" in c for c in cites)
+    assert any("Major depressive" in c or "[KB excerpt]" in c for c in cites)
+    snippets = result.get("kb_snippets") or []
+    assert snippets and "Major depressive" in snippets[0]
+    assert result.get("wise_narrative") and len(result["wise_narrative"]) > 120
+
+
 def test_s18_response_to_result_exposes_mh_plan_guard_marker():
     s18_data = {
         "status": "completed",
