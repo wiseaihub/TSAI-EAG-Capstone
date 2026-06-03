@@ -38,7 +38,9 @@ the orchestration core evolves independently for non-healthcare use cases.
 
 ## Current UI (WISE Clinical Portal)
 
-The screenshots below show the **current** web experience: secure sign‑in, then the signed‑in **WISE Clinical Intelligence Portal** with Doctor/Patient workflow modes, operational profile (including S18 long‑polling and backend poll timeout messaging), and CBC workflow panels.
+Production deployment: **[https://wiseai.health/](https://wiseai.health/)** (your browser may briefly redirect to the Railway app host while loading).
+
+The screenshots below show the **current** web experience: secure sign‑in, then the signed‑in **WISE Clinical Intelligence Portal** with Doctor/Patient workflow modes, operational profile (including S18 long‑polling and backend poll timeout messaging), and CBC workflow panels. The portal capture redacts the signed‑in account email via a localized blur for README hygiene.
 
 **Sign in — WISE Clinical Portal** (CBC and Mental Health workflows; Sign in / Create account / Forgot password)
 
